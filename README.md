@@ -1,4 +1,9 @@
 # Installation
+
+Package `net-mgmt/oidc`
+
+
+## AI Slop
 Installation Instructions for OPNsense OIDC Plugin:
 
 1. Create plugin directory structure:

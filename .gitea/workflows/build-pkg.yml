@@ -1,0 +1,45 @@
+name: 📦 Build Package
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  PLUGIN_NAME: oidc
+  PLUGIN_CATEGORY: net-mgmt
+
+jobs:
+  build:
+    runs-on: opnsense
+    steps:
+      # Clone the plugin build repo
+      - name: Checkout plugins
+        run: |
+          git clone --depth 1 https://github.com/opnsense/plugins.git ${GITHUB_WORKSPACE}
+
+      # Clone into the plugin structure
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.PLUGIN_CATEGORY }}/${{ env.PLUGIN_NAME }}
+
+      # Build the package
+      # - name: Install dependencies
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y make
+
+      - name: Build package
+        run: |
+          cd ${{ env.PLUGIN_CATEGORY }}/${{ env.PLUGIN_NAME }}
+          make clean package
+
+      # Upload the built package as an artifact
+      - name: Upload artifact
+        uses: christopherhx/gitea-upload-artifact@v4
+        with:
+          name: ${{ env.PLUGIN_NAME }}.pkg
+          path: ${{ env.PLUGIN_CATEGORY }}/${{ env.PLUGIN_NAME }}/work/pkg/*.pkg
