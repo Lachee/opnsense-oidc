@@ -1,0 +1,5 @@
+{
+    "scripts": {
+        "dev": "nodemon --watch src --exec ./build.sh --ext php,xml,volt,conf,ini"
+    }
+}
