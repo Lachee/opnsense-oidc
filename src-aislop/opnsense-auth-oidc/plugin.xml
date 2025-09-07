@@ -1,11 +1,11 @@
 <?xml version="1.0"?>
 <plugin>
-  <name>opnsense-auth-oidc</name>
+  <name>os-oidc</name>
   <version>0.1</version>
   <comment>Interactive OpenID Connect authentication backend</comment>
   <maintainer>you@example.com</maintainer>
   <category>security</category>
-  <visibility>hidden</visibility>
+  <visibility>visible</visibility>
   <controllers>
     <controller directory="/usr/local/opnsense/mvc/app/controllers/OPNsense/OIDC"/>
   </controllers>
@@ -18,7 +18,7 @@
     <authserver>
       <type>oidc</type>
       <description>OIDC Interactive</description>
-      <class>OPNsense\\Auth\\OIDCInteractive</class>
+      <class>OPNsense\\Auth\\OIDC</class>
     </authserver>
   </authservers>
 </plugin>
