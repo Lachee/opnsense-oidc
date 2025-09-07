@@ -1,0 +1,13 @@
+{
+    "name": "lachee/opnsense-oidc",
+    "description": "OIDC for opnsense",
+    "type": "project",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Lake",
+            "email": "lake.hopkins@outlook.com"
+        }
+    ],
+    "require": {}
+}

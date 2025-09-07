@@ -1,0 +1,3 @@
+<Services>
+    <OIDC VisibleName="OIDC Authentication" url="/ui/oidc/"/>
+</Services>
