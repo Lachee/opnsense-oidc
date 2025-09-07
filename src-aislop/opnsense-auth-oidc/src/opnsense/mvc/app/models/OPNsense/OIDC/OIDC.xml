@@ -1,0 +1,44 @@
+<model>
+  <mount>//OIDC</mount>
+  <version>1.0.0</version>
+  <description>OIDC Interactive Authentication</description>
+  <items>
+    <enabled type="BooleanField">
+      <default>0</default>
+      <Required>Y</Required>
+      <ValidationMessage>Enable or disable this OIDC backend.</ValidationMessage>
+    </enabled>
+    <issuer_url type="TextField">
+      <Required>Y</Required>
+      <ValidationMessage>Provider Issuer URL (root without /.well-known)</ValidationMessage>
+    </issuer_url>
+    <client_id type="TextField">
+      <Required>Y</Required>
+    </client_id>
+    <client_secret type="PasswordField">
+      <Required>N</Required>
+    </client_secret>
+    <redirect_uri type="TextField">
+      <Required>Y</Required>
+    </redirect_uri>
+    <scopes type="TextField">
+      <default>openid profile email</default>
+    </scopes>
+    <username_claim type="TextField">
+      <default>preferred_username</default>
+    </username_claim>
+    <groups_claim type="TextField">
+      <default>groups</default>
+    </groups_claim>
+    <required_groups type="TextField">
+      <default></default>
+      <ValidationMessage>Comma separated required groups (optional)</ValidationMessage>
+    </required_groups>
+    <jwks_cache_ttl type="IntegerField">
+      <default>3600</default>
+    </jwks_cache_ttl>
+    <verify_tls type="BooleanField">
+      <default>1</default>
+    </verify_tls>
+  </items>
+</model>

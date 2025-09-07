@@ -1,0 +1,9 @@
+%%WWWDIR%%/app/library/OPNsense/Auth/OIDCInteractive.php
+%%WWWDIR%%/app/library/OPNsense/OIDC/Client.php
+%%WWWDIR%%/app/library/OPNsense/OIDC/JWKSCache.php
+%%WWWDIR%%/app/library/OPNsense/OIDC/JWT.php
+%%WWWDIR%%/app/controllers/OPNsense/OIDC/IndexController.php
+%%ETCDIR%%/models/OPNsense/OIDC/OIDC.xml
+%%WWWDIR%%/js/oidc-login.js
+plugin.xml
+scripts/oidc-debug.php
