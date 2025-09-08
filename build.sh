@@ -1,8 +1,22 @@
 #!/bin/sh
 
-cp -r . /usr/plugins/net-mgmt/os-oidc
+NAME=oidc
+CATEGORY=devel
 
-cd /usr/plugins/net-mgmt/os-oidc
-make clean package
-pkg delete -fy os-oidc*
+WORK_DIR=$(pwd)
+PLUGIN_DIR=/usr/plugins/$CATEGORY/$NAME
+
+echo "Copying source..."
+rm $PLUGIN_DIR
+cp -r $WORK_DIR $PLUGIN_DIR
+
+echo "Building package..."
+cd $PLUGIN_DIR
+make package
+PKG_PATH=$(find work/pkg/*.pkg)
+
+echo "Installing $PKG_PATH..."
+pkg delete -fy *-oidc*
 pkg add $(find work/pkg/*.pkg)
+
+echo "done."
