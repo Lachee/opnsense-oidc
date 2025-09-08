@@ -37,6 +37,17 @@ use OPNsense\Core\Config;
 class OIDC extends Base implements IAuthConnector
 {
     /**
+     * @var string Discovery URL
+     */
+    public $oidcDiscoveryUrl = null;
+
+    public $oidcClientId = null;
+
+    public $oidcClientSecret = null;
+    
+    public $caseInSensitiveUsernames = true;
+
+    /**
      * type name in configuration
      * @return string
      */
@@ -51,7 +62,7 @@ class OIDC extends Base implements IAuthConnector
      */
     public function getDescription()
     {
-        return 'OpenID Connect';
+        return gettext('OpenID Connect');
     }
 
     /**
@@ -60,7 +71,42 @@ class OIDC extends Base implements IAuthConnector
      */
     public function setProperties($config)
     {
-        // local authenticator doesn't use any additional settings.
+        $confMap = [
+            'oidc_discovery_url' => 'oidcDiscoveryUrl',
+            'oidc_client_id' => 'oidcClientId',
+            'oidc_client_secret' => 'oidcClientSecret',
+        ];
+
+        // >> map properties 1-on-1
+        foreach ($confMap as $confSetting => $objectProperty) {
+            if (!empty($config[$confSetting]) && property_exists($this, $objectProperty)) {
+                $this->$objectProperty = $config[$confSetting];
+            }
+        }
+        
+        // >> translate config settings
+        // ( eg map Secure to https:// and Unsecure to http:// )
+
+        if (!empty($config['caseInSensitiveUsernames'])) {
+            $this->caseInSensitiveUsernames = true;
+        }
+    }
+
+    /**
+     * retrieve configuration options
+     * @return array
+     */
+    public function getConfigurationOptions()
+    {
+        $options = [];
+        $options["caseInSensitiveUsernames"] = [];
+        $options["caseInSensitiveUsernames"]["name"] = gettext("Match case insensitive");
+        $options["caseInSensitiveUsernames"]["help"] = gettext("Allow mixed case input when gathering local user settings.");
+        $options["caseInSensitiveUsernames"]["type"] = "checkbox";
+        $options["caseInSensitiveUsernames"]["validate"] = function ($value) {
+            return [];
+        };
+        return $options;
     }
 
     /**
