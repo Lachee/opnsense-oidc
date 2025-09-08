@@ -1,5 +1,5 @@
 <model>
-    <mount>//OPNsense/Oidc</mount>
+    <mount>//OPNsense/oidc</mount>
     <description>
         the OPNsense OpenID Connect authentication
     </description>

@@ -1,6 +1,6 @@
 <?php
 
-namespace OPNsense\HelloWorld;
+namespace OPNsense\Oidc;
 
 use OPNsense\Base\BaseModel;
 
