@@ -51,7 +51,7 @@ class OIDC extends Base implements IAuthConnector
      */
     public function getDescription()
     {
-        return 'oidc';
+        return 'OpenID Connect';
     }
 
     /**
