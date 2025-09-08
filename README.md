@@ -19,7 +19,8 @@ Once these are cloned into a repository, you can configure Intelephense to use t
     "intelephense.environment.includePaths": [
         "D:\\opnsense\\core\\src\\opnsense\\mvc",
         "D:\\opnsense\\ide-stubs\\src"
-    ]
+    ],
+    "explorer.compactFolders": false // This is recommended to prevent errors
 }
 ```
 
