@@ -99,12 +99,30 @@ class OIDC extends Base implements IAuthConnector
     public function getConfigurationOptions()
     {
         $options = [
+            'radius_secret' => [
+                'name' => gettext('Client ID'),
+                'help' => gettext('The Client ID'),
+                'type' => 'text',
+                'validate' => fn($value) => !empty($value) ? [] : [gettext('Client ID must not be empty.')]
+            ],
             'oidc_discovery_url' => [
                 'name' => gettext('Discovery URL'),
                 'help' => gettext('The full URL to the discovery json. It is usually in the /.well-known/.'),
                 'type' => 'text',
-                'validate' => fn($value) => [ 'oh no!' ],
+                'validate' => fn($value) => filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
 
+            ],
+            'oidc_client_id' => [
+                'name' => gettext('Client ID'),
+                'help' => gettext('The Client ID'),
+                'type' => 'text',
+                'validate' => fn($value) => !empty($value) ? [] : [gettext('Client ID must not be empty.')]
+            ],
+            'oidc_client_secret' => [
+                'name' => gettext('Client Secret'),
+                'help' => gettext('The Client Secret'),
+                'type' => 'text',
+                'validate' => fn($value) => !empty($value) ? [] : [gettext('Client Secret must not be empty. "Public Clients" are not supported.')]
             ],
             'caseInSensitiveUsernames' => [
                 "name" => gettext("Match case insensitive"),
