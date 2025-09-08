@@ -27,8 +27,8 @@ Once these are cloned into a repository, you can configure Intelephense to use t
 ## Setup on OPNSense
 Here are the steps i have gotten to work with setup.
 
-1. Clone [opnsense/plugins](https://github.com/opnsense/plugins) to /usr/plugins
-2. Clone [opnsense/tools](https://github.com/opnsense/tools) to /usr/tools
+1. Clone [opnsense/plugins](https://github.com/opnsense/plugins) to `/usr/plugins`
+2. Clone [opnsense/tools](https://github.com/opnsense/tools) to `/usr/tools`
 3. `cd /usr/tools` and `make update`
 4. `make plugins` (this might not be required. This will take a long time and tends to crash at libpam. I abort at this time )
 5. Clone your project to `~/project-name`
