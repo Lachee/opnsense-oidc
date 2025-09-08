@@ -61,7 +61,6 @@ class AuthController extends ApiControllerBase
     }
 
     public function callbackAction() {
-        // http://192.168.1.114/api/oidc/auth/callback?code=B2ChWzT8esXnJYlgwT7HuRZjEu0lWjB2&state=2048042130&iss=https%3A%2F%2Flogin.lakes.house
         $code = $this->request->get('code');
         $state = $this->request->get('state');
         $iss = $this->request->get('iss');
