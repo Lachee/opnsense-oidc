@@ -1,0 +1,14 @@
+Interactive OpenID Connect (OIDC) authentication backend for OPNsense.
+Provides an Authorization Code + PKCE browser flow and maps resulting
+ID token claims to an OPNsense user identity for GUI login.
+
+Features:
+ - Authorization Code + PKCE
+ - Claim mapping to username
+ - (Planned) group / role filtering
+ - JWKS caching and JWT validation
+
+Limitations (initial version):
+ - No silent token refresh
+ - Single provider per auth server entry
+ - Auto user provisioning optional future feature

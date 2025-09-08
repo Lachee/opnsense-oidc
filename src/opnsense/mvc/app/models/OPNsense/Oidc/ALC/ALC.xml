@@ -1,0 +1,9 @@
+<acl>
+    <page-user-oidc>
+        <name>Lobby: OpenID Connect</name>
+        <patterns>
+            <pattern>ui/oidc/*</pattern>
+            <pattern>api/oidc/*</pattern>
+        </patterns>
+    </page-user-oidc>
+</acl>

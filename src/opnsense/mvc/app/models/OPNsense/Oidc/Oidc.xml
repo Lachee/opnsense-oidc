@@ -1,0 +1,16 @@
+<model>
+    <mount>//OPNsense/Oidc</mount>
+    <description>
+        the OPNsense OpenID Connect authentication
+    </description>
+    <items>
+        <!-- container -->
+        <general>
+            <!-- fields -->
+            <Enabled type="BooleanField">
+                <Default>1</Default>
+                <Required>Y</Required>
+            </Enabled>
+        </general>
+    </items>
+</model>
