@@ -24,8 +24,19 @@ Once these are cloned into a repository, you can configure Intelephense to use t
 }
 ```
 
+## Setup on OPNSense
+Here are the steps i have gotten to work with setup.
 
-## AI Slop
+1. Clone [opnsense/plugins](https://github.com/opnsense/plugins) to /usr/plugins
+2. Clone [opnsense/tools](https://github.com/opnsense/tools) to /usr/tools
+3. `cd /usr/tools` and `make update`
+4. `make plugins` (this might not be required. This will take a long time and tends to crash at libpam. I abort at this time )
+5. Clone your project to `~/project-name`
+6. Copy the project's content to `/usr/plugins/devel/project-name`
+7. Build with `cd /usr/plugins/devel/project-name && make package`
+8. Install `pkg add /usr/plugins/devel/project-name/work/pkg/*.pkg`
+
+# AI Slop
 Installation Instructions for OPNsense OIDC Plugin:
 
 1. Create plugin directory structure:
