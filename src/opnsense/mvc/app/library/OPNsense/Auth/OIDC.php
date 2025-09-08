@@ -47,6 +47,8 @@ class OIDC extends Base implements IAuthConnector
 
     public $caseInSensitiveUsernames = true;
 
+    public $radiusSecret = '';
+
     /**
      * type name in configuration
      * @return string
@@ -99,12 +101,6 @@ class OIDC extends Base implements IAuthConnector
     public function getConfigurationOptions()
     {
         $options = [
-            'radius_secret' => [
-                'name' => gettext('Client ID'),
-                'help' => gettext('The Client ID'),
-                'type' => 'text',
-                'validate' => fn($value) => !empty($value) ? [] : [gettext('Client ID must not be empty.')]
-            ],
             'oidc_discovery_url' => [
                 'name' => gettext('Discovery URL'),
                 'help' => gettext('The full URL to the discovery json. It is usually in the /.well-known/.'),
