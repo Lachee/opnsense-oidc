@@ -121,10 +121,11 @@ class OIDC extends Local implements IAuthConnector
      */
     public function getConfigurationOptions()
     {
+        $callbackURL = gettext("Set your callback URL to <code>https://<ip of opnsense>/api/oidc/auth/callback</code>.");
         $options = [
             'oidc_discovery_url' => [
                 'name' => gettext('Discovery URL'),
-                'help' => gettext('The full URL to the discovery json. It is usually in the /.well-known/.'),
+                'help' => gettext('The full URL to the discovery json. It is usually in the /.well-known/. ') . $callbackURL,
                 'type' => 'text',
                 'validate' => fn($value) => filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
 
@@ -150,7 +151,7 @@ class OIDC extends Local implements IAuthConnector
             
             'oidc_authorization_endpoint' => [
                 'name' => gettext('Authorization Endpoint'),
-                'help' => gettext('URL endpoint for the authorization. This is provided on discovery.'),                
+                'help' => gettext('URL endpoint for the authorization. This is provided on discovery. ') . $callbackURL,                
                 'type' => 'text',
                 'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
             ],            
