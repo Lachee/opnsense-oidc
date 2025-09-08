@@ -47,8 +47,6 @@ class OIDC extends Base implements IAuthConnector
 
     public $caseInSensitiveUsernames = true;
 
-    public $radiusSecret = '';
-
     /**
      * type name in configuration
      * @return string
