@@ -1,5 +1,7 @@
 <menu>
-    <Lobby>
-        <OIDC VisibleName="OpenID Connect" cssClass="fa fa-key-o fa-fw fa-brands fa-openid" url="/ui/oidc"/>
-    </Lobby>
+    <System>
+        <Access>
+            <OIDC VisibleName="OpenID Connect" cssClass="fa fa-key-o fa-fw fa-brands fa-openid" url="/ui/oidc"/>
+        </Access>
+    </System>
 </menu>
