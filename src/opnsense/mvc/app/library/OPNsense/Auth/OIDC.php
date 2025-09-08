@@ -34,7 +34,7 @@ use OPNsense\Core\Config;
  * Class Local user database connector (using legacy xml structure).
  * @package OPNsense\Auth
  */
-class OIDC extends Base implements IAuthConnector
+class OIDC extends Local implements IAuthConnector
 {
     /**
      * @var string Discovery URL
@@ -45,7 +45,12 @@ class OIDC extends Base implements IAuthConnector
 
     public $oidcClientSecret = null;
 
-    public $caseInSensitiveUsernames = true;
+    public $oidcAuthorizationEndpoint = null;
+    public $oidcTokenEndpoint = null;
+    public $oidcUserInfoEndpoint = null;
+
+    public $oidcCustomButton = null;
+
 
     /**
      * type name in configuration
@@ -65,6 +70,27 @@ class OIDC extends Base implements IAuthConnector
         return gettext('OpenID Connect');
     }
 
+    public function getDiscovery() {
+        if (empty($this->oidcDiscoveryUrl))
+            throw new \RuntimeException('Discovery URL is not set.');
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $this->oidcDiscoveryUrl);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $output = curl_exec($ch);
+        curl_close($ch);
+        $payload = @json_decode($output);
+        return $payload;
+    }
+
+    public function populateWithDiscovery() {
+        $discovery = $this->getDiscovery();
+        $this->oidcAuthorizationEndpoint = $discovery->authorization_endpoint;
+        $this->oidcTokenEndpoint = $discovery->token_endpoint;
+        $this->oidcUserInfoEndpoint = $discovery->userinfo_endpoint;
+        return $this;
+    }
+
     /**
      * set connector properties
      * @param array $config connection properties
@@ -75,6 +101,10 @@ class OIDC extends Base implements IAuthConnector
             'oidc_discovery_url' => 'oidcDiscoveryUrl',
             'oidc_client_id' => 'oidcClientId',
             'oidc_client_secret' => 'oidcClientSecret',
+            'oidc_custom_button' => 'oidcCustomButton',
+            'oidc_authorization_endpoint' => 'oidcAuthorizationEndpoint',
+            'oidc_token_endpoint' => 'oidcTokenEndpoint',
+            'oidc_userinfo_endpoint' => 'oidcUserInfoEndpoint',
         ];
 
         // >> map properties 1-on-1
@@ -82,13 +112,6 @@ class OIDC extends Base implements IAuthConnector
             if (!empty($config[$confSetting]) && property_exists($this, $objectProperty)) {
                 $this->$objectProperty = $config[$confSetting];
             }
-        }
-
-        // >> translate config settings
-        // ( eg map Secure to https:// and Unsecure to http:// )
-
-        if (!empty($config['caseInSensitiveUsernames'])) {
-            $this->caseInSensitiveUsernames = true;
         }
     }
 
@@ -118,12 +141,31 @@ class OIDC extends Base implements IAuthConnector
                 'type' => 'text',
                 'validate' => fn($value) => !empty($value) ? [] : [gettext('Client Secret must not be empty. "Public Clients" are not supported.')]
             ],
-            'caseInSensitiveUsernames' => [
-                "name" => gettext("Match case insensitive"),
-                "help" => gettext("Allow mixed case input when gathering local user settings."),
-                "type" => "checkbox",
-                "validate" => fn($value) => [],
-            ]
+            'oidc_custom_button' => [
+                'name' => gettext('Custom Button'),
+                'help' => gettext('Custom HTML Button. Use <code>%name%</code> as a template for the OIDC\'s name and <code>%url%</code> as the href for the button.'),
+                'type' => 'text',
+                'validate' => fn($value) => [],
+            ],
+            
+            'oidc_authorization_endpoint' => [
+                'name' => gettext('Authorization Endpoint'),
+                'help' => gettext('URL endpoint for the authorization. This is provided on discovery.'),                
+                'type' => 'text',
+                'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
+            ],            
+            'oidc_token_endpoint' => [
+                'name' => gettext('Token Endpoint'),                
+                'help' => gettext('URL endpoint for the token. This is provided on discovery.'),
+                'type' => 'text',
+                'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
+            ],            
+            'oidc_userinfo_endpoint' => [
+                'name' => gettext('User Info Endpoint'),
+                'help' => gettext('URL endpoint for the user info. This is provided on discovery.'),
+                'type' => 'text',
+                'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
+            ],
         ];
 
         return $options;
@@ -136,86 +178,6 @@ class OIDC extends Base implements IAuthConnector
     public function getLastAuthProperties()
     {
         return [];
-    }
-
-    /**
-     * check if password meets policy constraints
-     * @param string $username username to check
-     * @param string $old_password current password
-     * @param string $new_password password to check
-     * @return array of unmet policy constraints
-     */
-    public function checkPolicy($username, $old_password, $new_password)
-    {
-        $result = [];
-        $configObj = Config::getInstance()->object();
-        if (!empty($configObj->system->webgui->enable_password_policy_constraints)) {
-            if (!empty($configObj->system->webgui->password_policy_length)) {
-                if (strlen($new_password) < $configObj->system->webgui->password_policy_length) {
-                    $result[] = sprintf(
-                        gettext("Password must have at least %d characters"),
-                        $configObj->system->webgui->password_policy_length
-                    );
-                }
-            }
-            if (!empty($configObj->system->webgui->password_policy_complexity)) {
-                $pwd_has_upper = preg_match_all('/[A-Z]/', $new_password, $o) > 0;
-                $pwd_has_lower = preg_match_all('/[a-z]/', $new_password, $o) > 0;
-                $pwd_has_number = preg_match_all('/[0-9]/', $new_password, $o) > 0;
-                $pwd_has_special = preg_match_all('/[!@#$%^&*()\-_=+{};:,<.>]/', $new_password, $o) > 0;
-                if ($old_password == $new_password) {
-                    // equal password is not allowed
-                    $result[] = gettext("Current password equals new password");
-                }
-                if (($pwd_has_upper + $pwd_has_lower + $pwd_has_number + $pwd_has_special) < 3) {
-                    // passwords should at least contain 3 of the 4 available character types
-                    $result[] = gettext("Password should contain at least 3 of the 4 different character groups" .
-                        " (lowercase, uppercase, number, special)");
-                } elseif (strpos($new_password, $username) !== false) {
-                    $result[] = gettext("The username may not be a part of the password");
-                }
-            }
-        }
-        return $result;
-    }
-
-    /**
-     * check if the user should change his or her password,
-     * calculated by the time difference of the last pwd change
-     * and other criteria through checkPolicy() if password was
-     * given
-     * @param string $username username to check
-     * @param string $password password to check
-     * @return boolean
-     */
-    public function shouldChangePassword($username, $password = null)
-    {
-        $configObj = Config::getInstance()->object();
-        if (!empty($configObj->system->webgui->enable_password_policy_constraints)) {
-            $userObject = $this->getUser($username);
-            if ($userObject != null) {
-                if (!empty($configObj->system->webgui->password_policy_duration)) {
-                    $now = microtime(true);
-                    $pwdChangedAt = empty($userObject->pwd_changed_at) ? 0 : $userObject->pwd_changed_at;
-                    if (abs($now - $pwdChangedAt) / 60 / 60 / 24 >= $configObj->system->webgui->password_policy_duration) {
-                        return true;
-                    }
-                }
-                if (!empty($configObj->system->webgui->password_policy_compliance)) {
-                    /* if compliance is required make sure the user has a SHA-512 hash as password */
-                    if (strpos((string)$userObject->password, '$6$') !== 0) {
-                        return true;
-                    }
-                }
-            }
-        }
-        if ($password != null) {
-            /* not optimal, modify "old_password" to avoid equal check */
-            if (count($this->checkPolicy($username, '~' . $password, $password))) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**

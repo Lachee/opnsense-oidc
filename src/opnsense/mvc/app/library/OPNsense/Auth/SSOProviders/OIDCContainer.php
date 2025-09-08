@@ -1,0 +1,30 @@
+<?php
+
+namespace OPNsense\Auth\SSOProviders;
+
+use Generator;
+
+class OIDCContainer implements ISSOContainer {
+    public function listProviders(): \Generator
+    {
+        $authServers = \config_read_array('system', 'authserver');
+        foreach($authServers as $server) {
+            if ($server['type'] !== 'oidc')
+                continue;
+
+            $opts = [
+                'service' => 'WebGui',
+                'name' => $server['name'],
+                'login_uri' => "/api/oidc/auth/login?provider={$server['name']}",
+            ];
+            
+            if (!empty($server['oidc_custom_button'])) {
+                $opts['html_content'] = $server['oidc_custom_button'];
+                $opts['html_content'] = str_replace('%name%', $opts['name'], $opts['html_content']);
+                $opts['html_content'] = str_replace('%url%', $opts['login_uri'], $opts['html_content']);
+            }
+
+            yield new OIDC($opts);
+        }
+    }
+}
