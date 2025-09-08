@@ -6,9 +6,12 @@ CATEGORY=devel
 WORK_DIR=$(pwd)
 PLUGIN_DIR=/usr/plugins/$CATEGORY/$NAME
 
-echo "Copying source..."
+echo "Copying sources..."
 rm $PLUGIN_DIR
-cp -r $WORK_DIR $PLUGIN_DIR
+mkdir -p $PLUGIN_DIR
+cp $WORK_DIR/Makefile $PLUGIN_DIR/Makefile
+cp $WORK_DIR/pkg-descr $PLUGIN_DIR/pkg-descr
+cp -r $WORK_DIR/src $PLUGIN_DIR/src
 
 echo "Building package..."
 cd $PLUGIN_DIR
