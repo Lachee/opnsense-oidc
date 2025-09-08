@@ -44,7 +44,7 @@ class OIDC extends Base implements IAuthConnector
     public $oidcClientId = null;
 
     public $oidcClientSecret = null;
-    
+
     public $caseInSensitiveUsernames = true;
 
     /**
@@ -55,7 +55,7 @@ class OIDC extends Base implements IAuthConnector
     {
         return 'oidc';
     }
-    
+
     /**
      * user friendly description of this authenticator
      * @return string
@@ -83,7 +83,7 @@ class OIDC extends Base implements IAuthConnector
                 $this->$objectProperty = $config[$confSetting];
             }
         }
-        
+
         // >> translate config settings
         // ( eg map Secure to https:// and Unsecure to http:// )
 
@@ -98,14 +98,22 @@ class OIDC extends Base implements IAuthConnector
      */
     public function getConfigurationOptions()
     {
-        $options = [];
-        $options["caseInSensitiveUsernames"] = [];
-        $options["caseInSensitiveUsernames"]["name"] = gettext("Match case insensitive");
-        $options["caseInSensitiveUsernames"]["help"] = gettext("Allow mixed case input when gathering local user settings.");
-        $options["caseInSensitiveUsernames"]["type"] = "checkbox";
-        $options["caseInSensitiveUsernames"]["validate"] = function ($value) {
-            return [];
-        };
+        $options = [
+            'oidc_discovery_url' => [
+                'name' => gettext('Discovery URL'),
+                'help' => gettext('The full URL to the discovery json. It is usually in the /.well-known/.'),
+                'type' => 'text',
+                'validate' => fn($value) => [ 'oh no!' ],
+
+            ],
+            'caseInSensitiveUsernames' => [
+                "name" => gettext("Match case insensitive"),
+                "help" => gettext("Allow mixed case input when gathering local user settings."),
+                "type" => "checkbox",
+                "validate" => fn($value) => [],
+            ]
+        ];
+
         return $options;
     }
 
@@ -150,7 +158,7 @@ class OIDC extends Base implements IAuthConnector
                 if (($pwd_has_upper + $pwd_has_lower + $pwd_has_number + $pwd_has_special) < 3) {
                     // passwords should at least contain 3 of the 4 available character types
                     $result[] = gettext("Password should contain at least 3 of the 4 different character groups" .
-                                        " (lowercase, uppercase, number, special)");
+                        " (lowercase, uppercase, number, special)");
                 } elseif (strpos($new_password, $username) !== false) {
                     $result[] = gettext("The username may not be a part of the password");
                 }
