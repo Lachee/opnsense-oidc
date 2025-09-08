@@ -16,7 +16,7 @@ make package
 PKG_PATH=$(find work/pkg/*.pkg)
 
 echo "Installing $PKG_PATH..."
-pkg delete -fy *-oidc*
+pkg delete -fy os-oidc*
 pkg add $(find work/pkg/*.pkg)
 
 echo "done."
