@@ -17,10 +17,15 @@ Once these are cloned into a repository, you can configure Intelephense to use t
 ```json
 {
     "intelephense.environment.includePaths": [
-        "D:\\opnsense\\core\\src\\opnsense\\mvc",
-        "D:\\opnsense\\ide-stubs\\src"
+        "D:\\projects\\opnsense\\core\\src\\opnsense\\mvc",
+        "D:\\projects\\opnsense\\core\\src\\etc\\inc",
+        "D:\\projects\\opnsense\\core\\src\\www",
+        "D:\\projects\\opnsense\\ide-stubs\\src"
     ],
-    "explorer.compactFolders": false // This is recommended to prevent errors
+    "explorer.compactFolders": false,
+    "files.associations": {
+        "*.inc": "php",
+    }
 }
 ```
 
