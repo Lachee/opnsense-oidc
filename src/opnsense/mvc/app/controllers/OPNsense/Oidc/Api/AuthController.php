@@ -23,16 +23,14 @@ class AuthController extends ApiControllerBase
         return true;
     }
 
-    public function initialize()
-    {
-        parent::initialize();
-    }
-
     /**
      * reconfigure HelloWorld
      */
     public function loginAction()
-    {
+    {        
+        if ($this->session->get('Username') != null) 
+            return 'You are already logged in as ' . $this->session->get('Username');
+
         $provider = $this->request->get('provider');
         if (empty($provider)) {
             $this->response->setStatusCode(400, "Bad Request");
@@ -42,39 +40,24 @@ class AuthController extends ApiControllerBase
         // $_SESSION['openid_connect_provider'] = $provider;
         $this->session->set('openid_connect_provider', $provider);
         $user = $this->authenticate($provider);
+        
+        $this->session->close();
         if ($user === false)
             return ['msg' => 'redirecting'];
 
         return ['msg' => 'already logged in', 'user' => $user];
     }
 
-    public function testAction()
-    {
-        $cnf = Config::getInstance()->object();
-
-        // $_SESSION('Username', 'root');
-        // $_SESSION('last_access', time());
-        // $_SESSION['protocol'] = $cnf->system->webgui->protocol;
-        
-        $this->session->set('Username', 'root');
-        $this->session->set('last_access', time());
-        $this->session->set('protocol', $cnf->system->webgui->protocol);
-
-        // Redirect to dashboard
-        // $acl = new \OPNsense\Core\ACL();
-        // $url = $acl->getLandingPage($_SESSION['Username']);
-        // $this->response->redirect("/$url");
-        $this->response->redirect('/ui/core/dashboard');
-        return 'ok.';
-    }
 
     public function callbackAction()
     {
+        if ($this->session->get('Username') != null)            
+            return 'You are already logged in as ' . $this->session->get('Username');
+
         // $provider = $_SESSION['openid_connect_provider'];
         $provider = $this->session->get('openid_connect_provider');
         if (empty($provider)) {
             $this->response->setStatusCode(404, "Authentication not found");
-            // TODO: Redirect to login
             return "Missing authentication provider. Please try the flow again.";
         }
 
@@ -88,7 +71,6 @@ class AuthController extends ApiControllerBase
         $lookupUsername = $user->preferred_username ?? null;
         $lookupEmail    = $user->email ?? null;
         $localUser = $this->findLocalUser($lookupUsername, $lookupEmail);
-
         if ($localUser === false) {
             if (!self::ALLOW_USER_CREATION) {
                 $this->response->setStatusCode(403, "User not found");
@@ -103,19 +85,14 @@ class AuthController extends ApiControllerBase
             }
         }
 
-
         // Create the main login session and log the user in.
         $cnf = Config::getInstance()->object();
-        // $_SESSION['Username'] = $localUser['name'];
-        // $_SESSION['last_access'] = time();        
-        $this->session->set('Username', 'root');
+        $this->session->set('Username', $localUser['name']);
         $this->session->set('last_access', time());
-
-        // if (!isset($cnf->system->webgui->quietlogin)) {
-            // $this->getLogger('audit')->notice(sprintf("OpenIDConnect login for user '%s' from: %s", $localUser['name'], $_SERVER['REMOTE_ADDR']), LOG_NOTICE);
-        // }
-
-        $this->response->redirect('/ui/core/dashboard');
+        $this->session->set('protocol', strval($cnf->system->webgui->protocol));
+        $this->session->set('oidc_user', $user);
+        $this->session->close();
+        $this->response->redirect('/');
         return 'ok.';
     }
 
@@ -124,7 +101,7 @@ class AuthController extends ApiControllerBase
         $auth = (new AuthenticationFactory())->get($provider);
         if ($auth == null || $auth->getType() !== 'oidc') {
             $this->response->setStatusCode(404, "Authentication not found");
-            return ["error" => "missing provider"];
+            return false;
         }
 
         /** @var OIDC $auth */
@@ -138,8 +115,7 @@ class AuthController extends ApiControllerBase
         return $user;
     }
 
-
-
+    /** Finds the local user that best matches the given username or email. */
     protected function findLocalUser($username, $email)
     {
         $cnf = Config::getInstance()->object();
@@ -163,10 +139,16 @@ class AuthController extends ApiControllerBase
         return false;
     }
 
+    /** Creates a new local user. */
     protected function createLocalUser($username, $email)
     {
-        $cnf = Config::getInstance()->object();
+        if (!self::ALLOW_USER_CREATION)
+            throw new \RuntimeException('Cannot create new users');
 
+        // The following code was thrown together and not properly tested.
+        throw new \RuntimeException('Not Yet Implemented / Tested.');
+
+        $cnf = Config::getInstance()->object();
         $user = $cnf->system->user->addChild('user');
         $user->name     = $username;
         $user->descr    = "OIDC User";

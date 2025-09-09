@@ -19,6 +19,8 @@ class OidcClient extends OpenIDConnectClient
 {
     /** @var OIDC $auth */
     protected $auth;
+    /** @var Session $session */
+    protected $session;
     /** @var Request $request */
     protected $request;
     /** @var Response $response */
@@ -30,10 +32,33 @@ class OidcClient extends OpenIDConnectClient
         $this->phpseclib_autoload('phpseclib3', '/usr/local/share/phpseclib');
         parent::__construct($auth->oidcProviderUrl, $auth->oidcClientId, $auth->oidcClientSecret);
         $this->auth = $auth;
+        $this->session = $controller->session;
         $this->request = $controller->request;
         $this->response = $controller->response;
 
         $this->setRedirectURL("{$this->request->getScheme()}://{$this->request->getHeader('HOST')}{$callback}");
+    }
+
+    protected function startSession() {}
+
+    protected function commitSession() {}
+
+    protected function getSessionKey(string $key)
+    {
+        $result = $this->session->get($key, null);
+        if ($result === null)
+            return false;
+        return unserialize($result);
+    }
+
+    protected function setSessionKey(string $key, $value)
+    {
+        $this->session->set($key, serialize($value));
+    }
+
+    protected function unsetSessionKey(string $key)
+    {
+        $this->session->remove($key);
     }
 
     public function redirect(string $url)
