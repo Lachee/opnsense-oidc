@@ -36,10 +36,7 @@ use OPNsense\Core\Config;
  */
 class OIDC extends Local implements IAuthConnector
 {
-    /**
-     * @var string Discovery URL
-     */
-    public $oidcDiscoveryUrl = null;
+    public $oidcProviderUrl = null;
 
     public $oidcClientId = null;
 
@@ -70,27 +67,6 @@ class OIDC extends Local implements IAuthConnector
         return gettext('OpenID Connect');
     }
 
-    public function getDiscovery() {
-        if (empty($this->oidcDiscoveryUrl))
-            throw new \RuntimeException('Discovery URL is not set.');
-
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $this->oidcDiscoveryUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $output = curl_exec($ch);
-        curl_close($ch);
-        $payload = @json_decode($output);
-        return $payload;
-    }
-
-    public function populateWithDiscovery() {
-        $discovery = $this->getDiscovery();
-        $this->oidcAuthorizationEndpoint = $discovery->authorization_endpoint;
-        $this->oidcTokenEndpoint = $discovery->token_endpoint;
-        $this->oidcUserInfoEndpoint = $discovery->userinfo_endpoint;
-        return $this;
-    }
-
     /**
      * set connector properties
      * @param array $config connection properties
@@ -98,7 +74,7 @@ class OIDC extends Local implements IAuthConnector
     public function setProperties($config)
     {
         $confMap = [
-            'oidc_discovery_url' => 'oidcDiscoveryUrl',
+            'oidc_provider_url' => 'oidcProviderUrl',
             'oidc_client_id' => 'oidcClientId',
             'oidc_client_secret' => 'oidcClientSecret',
             'oidc_custom_button' => 'oidcCustomButton',
@@ -123,8 +99,8 @@ class OIDC extends Local implements IAuthConnector
     {
         $callbackURL = gettext("Set your callback URL to <code>https://<ip of opnsense>/api/oidc/auth/callback</code>.");
         $options = [
-            'oidc_discovery_url' => [
-                'name' => gettext('Discovery URL'),
+            'oidc_provider_url' => [
+                'name' => gettext('Provider URL'),
                 'help' => gettext('The full URL to the discovery json. It is usually in the /.well-known/. ') . $callbackURL,
                 'type' => 'text',
                 'validate' => fn($value) => filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],

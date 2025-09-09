@@ -7,7 +7,8 @@ require_once("config.inc");
 use OPNsense\Auth\AuthenticationFactory;
 use OPNsense\Auth\OIDC;
 use OPNsense\Base\ApiControllerBase;
-use OPNsense\Core\Backend;
+use OPNsense\Mvc\Session;
+use OPNsense\Oidc\OidcClient;
 
 /**
  * Class ServiceController
@@ -22,48 +23,59 @@ class AuthController extends ApiControllerBase
         return true;
     }
 
+
+    public function initialize()
+    {
+        parent::initialize();
+    }
+
     /**
      * reconfigure HelloWorld
      */
     public function loginAction()
     {
+        $session = new Session();
+
         $provider = $this->request->get('provider');
         if (empty($provider)) {
             $this->response->setStatusCode(400, "Bad Request");
-            return [ "error" => "missing provider" ];
+            return ["error" => "missing provider"];
         }
 
+        $session->set('openid_connect_provider', $provider);
+        $success = $this->authenticate($provider, $session);
+        return ['success' => $success];
+    }
+
+    public function callbackAction()
+    {
+        $session = new Session();
+
+        $provider = $session->get('openid_connect_provider', '');
+        if (empty($provider)) {
+            $this->response->setStatusCode(404, "Authentication not found");
+            // TODO: Redirect to login
+            return "Missing authentication provider. Please try the flow again.";
+        }
+
+        $success = $this->authenticate($provider, $session);
+        if (!$success) {
+            $this->response->setStatusCode(400, "Authentication not found");
+            return "Something went wrong while trying to login you in";
+        }
+
+        return "Welcome!";
+    }
+
+    protected function authenticate($provider, $session) {
         $auth = (new AuthenticationFactory())->get($provider);
         if ($auth == null || $auth->getType() !== 'oidc') {
             $this->response->setStatusCode(404, "Authentication not found");
-            return [ "error" => "missing provider" ];
+            return ["error" => "missing provider"];
         }
 
         /** @var OIDC $auth */
-        if (empty($auth->oidcAuthorizationEndpoint))
-            $auth->populateWithDiscovery(); // TODO: Figure out how to save this again
-        
-
-        $endpoint = $auth->oidcAuthorizationEndpoint;
-        $params = [
-            'response_type' => 'code',
-            'client_id' => $auth->oidcClientId,
-            'scope' => join(',', [ 'openid', 'email', 'profile' ]),
-            'redirect_uri' =>  "{$this->request->getScheme()}://{$this->request->getHeader('HOST')}/api/oidc/auth/callback",
-            'state' => rand(),
-        ];
-
-        $this->response->redirect("{$endpoint}?" . http_build_query($params));
-        return [
-            'endpoint' => $endpoint,
-            'params' => $params,
-        ];
-    }
-
-    public function callbackAction() {
-        $code = $this->request->get('code');
-        $state = $this->request->get('state');
-        $iss = $this->request->get('iss');
-        return [ 'error' => 'Not Yet Implemented' ];
+        $client = new OidcClient($auth, $session, $this);
+        return $client->authenticate();
     }
 }
