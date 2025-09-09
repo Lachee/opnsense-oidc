@@ -28,13 +28,15 @@ class AuthController extends ApiControllerBase
      */
     public function loginAction()
     {        
-        if ($this->session->get('Username') != null) 
-            return 'You are already logged in as ' . $this->session->get('Username');
+        if ($this->session->get('Username') != null)  {
+            $this->response->setStatusCode(400, "Bad Request");            
+            return "Already logged in.";
+        }
 
         $provider = $this->request->get('provider');
         if (empty($provider)) {
             $this->response->setStatusCode(400, "Bad Request");
-            return ["error" => "missing provider"];
+            return "Missing authentication provider.";
         }
 
         // $_SESSION['openid_connect_provider'] = $provider;
@@ -43,24 +45,26 @@ class AuthController extends ApiControllerBase
         
         $this->session->close();
         if ($user === false)
-            return ['msg' => 'redirecting'];
-
-        return ['msg' => 'already logged in', 'user' => $user];
+            return 'Redirecting...';
+        return "Already logged in but session not setup. Please try again";
     }
 
 
     public function callbackAction()
     {
-        if ($this->session->get('Username') != null)            
-            return 'You are already logged in as ' . $this->session->get('Username');
+        if ($this->session->get('Username') != null)  {
+            $this->response->setStatusCode(400, "Bad Request");
+            return "Already logged in.";
+        }
 
-        // $provider = $_SESSION['openid_connect_provider'];
         $provider = $this->session->get('openid_connect_provider');
         if (empty($provider)) {
             $this->response->setStatusCode(404, "Authentication not found");
             return "Missing authentication provider. Please try the flow again.";
         }
-
+        $this->session->remove('openid_connect_provider');
+        
+        // Check the OIDC flow
         $user = $this->authenticate($provider);
         if ($user === false) {
             $this->response->setStatusCode(400, "Authentication not found");
@@ -93,7 +97,7 @@ class AuthController extends ApiControllerBase
         $this->session->set('oidc_user', $user);
         $this->session->close();
         $this->response->redirect('/');
-        return 'ok.';
+        return 'Redirecting home...';
     }
 
     protected function authenticate($provider)
