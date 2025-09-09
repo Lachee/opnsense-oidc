@@ -19,55 +19,21 @@ class OidcClient extends OpenIDConnectClient
 {
     /** @var OIDC $auth */
     protected $auth;
-    /** @var Session $session */
-    protected $session;
     /** @var Request $request */
     protected $request;
     /** @var Response $response */
     protected $response;
 
-    public function __construct(OIDC $auth, Session $session, Controller $controller, string $callback = '/api/oidc/auth/callback')
+    public function __construct(OIDC $auth, Controller $controller, string $callback = '/api/oidc/auth/callback')
     {
         $this->phpseclib_autoload('ParagonIE\ConstantTime', '/usr/local/share/phpseclib/paragonie');
         $this->phpseclib_autoload('phpseclib3', '/usr/local/share/phpseclib');
         parent::__construct($auth->oidcProviderUrl, $auth->oidcClientId, $auth->oidcClientSecret);
         $this->auth = $auth;
-        $this->session = $session;
         $this->request = $controller->request;
         $this->response = $controller->response;
 
         $this->setRedirectURL("{$this->request->getScheme()}://{$this->request->getHeader('HOST')}{$callback}");
-    }
-
-    protected function startSession() { 
-        if ($this->session == null) {
-            $this->session = new Session();
-        }
-    }
-
-    protected function commitSession()
-    {
-        $this->startSession();
-        $this->session->close();
-        $this->session = null;
-    }
-
-    protected function getSessionKey(string $key)
-    {
-        $this->startSession();
-        return $this->session->get($key, false);
-    }    
-
-    protected function setSessionKey(string $key, $value)
-    {
-        $this->startSession();
-        $this->session->set($key, $value);
-    }
-
-    protected function unsetSessionKey(string $key)
-    {
-        $this->startSession();
-        $this->session->remove($key);
     }
 
     public function redirect(string $url)
