@@ -9,8 +9,7 @@ class OIDCContainer implements ISSOContainer
 {
     public function listProviders(): \Generator
     {
-        $authServers = Config::getInstance()->object()->system->authserver;
-        foreach ($authServers as $server) {
+        foreach (Config::getInstance()->object()->system->authserver->children() as $server) {
             if ($server['type'] !== 'oidc')
                 continue;
 
