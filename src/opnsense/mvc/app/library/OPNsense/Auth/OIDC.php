@@ -37,10 +37,9 @@ use OPNsense\Core\Config;
 class OIDC extends Local implements IAuthConnector
 {
     public $oidcProviderUrl = null;
-
     public $oidcClientId = null;
-
     public $oidcClientSecret = null;
+    public $oidcCreateUsers = false;
 
     public $oidcAuthorizationEndpoint = null;
     public $oidcTokenEndpoint = null;
@@ -83,6 +82,7 @@ class OIDC extends Local implements IAuthConnector
             'oidc_token_endpoint' => 'oidcTokenEndpoint',
             'oidc_userinfo_endpoint' => 'oidcUserInfoEndpoint',
             'oidc_icon_url' => 'oidcIconUrl',
+            'oidc_create_users' => 'oidcCreateUsers',
         ];
 
         // >> map properties 1-on-1
@@ -101,6 +101,7 @@ class OIDC extends Local implements IAuthConnector
     {
         $callbackURL = gettext("Set your callback URL to <code>https://<ip of opnsense>/api/oidc/auth/callback</code>.");
         $options = [
+            // Configuration
             'oidc_provider_url' => [
                 'name' => gettext('Provider URL'),
                 'help' => gettext('The full URL to the discovery json. It is usually in the /.well-known/. ') . $callbackURL,
@@ -120,6 +121,16 @@ class OIDC extends Local implements IAuthConnector
                 'type' => 'text',
                 'validate' => fn($value) => !empty($value) ? [] : [gettext('Client Secret must not be empty. "Public Clients" are not supported.')]
             ],
+
+            // Advance
+            'oidc_create_users' => [
+                'name' => gettext('Auto-create Users'),
+                'help' => gettext('If a user authenticates successfully but does not exist in the local database, automatically create the user. Recommended to leave disabled.'),
+                'type' => 'checkbox',
+                'validate' => fn($value) => [],
+            ],
+
+            // Decorative
             'oidc_icon_url' => [
                 'name' => gettext('Icon URL'),
                 'help' => gettext('URL to an icon representing the OIDC provider. This should be a small image (16x16 or 32x32) in either PNG or SVG format. This image will be proxied.'),

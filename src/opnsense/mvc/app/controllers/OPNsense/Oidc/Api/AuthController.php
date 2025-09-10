@@ -14,7 +14,8 @@ use OPNsense\Oidc\OidcClient;
  */
 class AuthController extends ApiControllerBase
 {
-    const ALLOW_USER_CREATION = false;
+    const ALLOW_USER_CREATION = true;
+    const SESSION_AUTH_PROVIDER = 'openid_connect_provider';
 
     public function doAuth()
     {
@@ -71,19 +72,22 @@ class AuthController extends ApiControllerBase
             return "Already logged in.";
         }
 
+        // Set the provider in the session
         $provider = $this->request->get('provider');
         if (empty($provider)) {
             $this->response->setStatusCode(400, "Bad Request");
             return "Missing authentication provider.";
         }
+        $this->session->set(self::SESSION_AUTH_PROVIDER, $provider);
 
-        // $_SESSION['openid_connect_provider'] = $provider;
-        $this->session->set('openid_connect_provider', $provider);
-        $user = $this->authenticate($provider);
+        // Authenticate
+        $auth = $this->getAuthProvider($provider);
+        $user = $this->authenticate($auth);
 
         $this->session->close();
         if ($user === false)
             return 'Redirecting...';
+
         return "Already logged in but session not setup. Please try again";
     }
 
@@ -95,15 +99,17 @@ class AuthController extends ApiControllerBase
             return "Already logged in.";
         }
 
-        $provider = $this->session->get('openid_connect_provider');
+        // Get the provider from the session
+        $provider = $this->session->get(self::SESSION_AUTH_PROVIDER);
         if (empty($provider)) {
             $this->response->setStatusCode(404, "Authentication not found");
             return "Missing authentication provider. Please try the flow again.";
         }
-        $this->session->remove('openid_connect_provider');
+        $this->session->remove(self::SESSION_AUTH_PROVIDER);
 
         // Check the OIDC flow
-        $user = $this->authenticate($provider);
+        $auth = $this->getAuthProvider($provider);
+        $user = $this->authenticate($auth);
         if ($user === false) {
             $this->response->setStatusCode(400, "Authentication not found");
             return "Something went wrong while trying to login you in";
@@ -114,7 +120,7 @@ class AuthController extends ApiControllerBase
         $lookupEmail    = $user->email ?? null;
         $localUser = $this->findLocalUser($lookupUsername, $lookupEmail);
         if ($localUser === false) {
-            if (!self::ALLOW_USER_CREATION) {
+            if (!self::ALLOW_USER_CREATION || !$auth->oidcAllowUserCreation) {
                 $this->response->setStatusCode(403, "User not found");
                 return "No matching local account, and user creation disabled.";
             }
@@ -138,13 +144,18 @@ class AuthController extends ApiControllerBase
         return 'Redirecting home...';
     }
 
-    protected function authenticate($provider)
+    protected function getAuthProvider($provider)
     {
         $auth = (new AuthenticationFactory())->get($provider);
         if ($auth == null || $auth->getType() !== 'oidc') {
             $this->response->setStatusCode(404, "Authentication not found");
             return false;
         }
+        return $auth;
+    }
+
+    protected function authenticate($auth)
+    {
 
         /** @var OIDC $auth */
         $client = new OidcClient($auth, $this);
