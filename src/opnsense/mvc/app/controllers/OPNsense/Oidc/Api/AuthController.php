@@ -57,13 +57,7 @@ class AuthController extends ApiControllerBase
             return "Unable to fetch icon. " . ($curlErr ?: "HTTP $httpCode");
         }
 
-        $finfo = new \finfo(FILEINFO_MIME_TYPE);
-        $mimeType = $finfo->buffer($imageData);
-        if (!in_array($mimeType, ['image/png', 'image/svg+xml', 'image/jpeg'])) {
-            $this->response->setStatusCode(415, "Unsupported Media Type");
-            return "Unsupported image type.";
-        }
-
+        $mimeType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
         $this->response->setHeader('Content-Type', $mimeType);
         $this->response->setHeader('Cache-Control', 'public, max-age=86400'); // cache for 1 day
         return $imageData;
