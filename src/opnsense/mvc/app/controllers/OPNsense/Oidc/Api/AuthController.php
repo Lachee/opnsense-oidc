@@ -109,6 +109,9 @@ class AuthController extends ApiControllerBase
 
         // Check the OIDC flow
         $auth = $this->getAuthProvider($provider);
+        if ($auth === null)
+            return "Authentication provider not found. Please try the flow again.";
+
         $user = $this->authenticate($auth);
         if ($user === false) {
             $this->response->setStatusCode(400, "Authentication not found");
@@ -120,7 +123,7 @@ class AuthController extends ApiControllerBase
         $lookupEmail    = $user->email ?? null;
         $localUser = $this->findLocalUser($lookupUsername, $lookupEmail);
         if ($localUser === false) {
-            if (!self::ALLOW_USER_CREATION || !$auth->oidcAllowUserCreation) {
+            if (!self::ALLOW_USER_CREATION || !$auth->oidcCreateUsers) {
                 $this->response->setStatusCode(403, "User not found");
                 return "No matching local account, and user creation disabled.";
             }
@@ -144,12 +147,12 @@ class AuthController extends ApiControllerBase
         return 'Redirecting home...';
     }
 
-    protected function getAuthProvider($provider)
+    protected function getAuthProvider($provider): OIDC|null
     {
         $auth = (new AuthenticationFactory())->get($provider);
         if ($auth == null || $auth->getType() !== 'oidc') {
             $this->response->setStatusCode(404, "Authentication not found");
-            return false;
+            return null;
         }
         return $auth;
     }
