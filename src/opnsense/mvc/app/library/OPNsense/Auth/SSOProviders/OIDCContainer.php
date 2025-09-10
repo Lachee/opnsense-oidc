@@ -17,21 +17,22 @@ class OIDCContainer implements ISSOContainer
             $authServers = [$authServers];
 
         foreach ($authServers as $server) {
-            if ($server->type !== 'oidc')
+            if ((string)$server->type !== 'oidc')
                 continue;
 
+            $name = (string)$server->name;
             $opts = [
                 'service' => 'WebGui',
-                'name' => $server->name,
-                'login_uri' => "/api/oidc/auth/login?provider={$server->name}",
+                'name' => $name,
+                'login_uri' => "/api/oidc/auth/login?provider={$name}",
             ];
 
-            if (!empty($server->oidc_custom_button)) {
-                $opts['html_content'] = $server->oidc_custom_button;
-
-                $iconUrl = "/api/oidc/auth/icon?provider={$server->name}";
+            $customButton = (string)$server->oidc_custom_button;
+            if (!empty($customButton)) {
+                $opts['html_content'] = $customButton;
+                $iconUrl = "/api/oidc/auth/icon?provider={$name}";
                 $opts['html_content'] = str_replace('%icon%', $iconUrl, $opts['html_content']);
-                $opts['html_content'] = str_replace('%name%', $opts['name'], $opts['html_content']);
+                $opts['html_content'] = str_replace('%name%', $name, $opts['html_content']);
                 $opts['html_content'] = str_replace('%url%', $opts['login_uri'], $opts['html_content']);
             }
 
