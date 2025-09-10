@@ -2,13 +2,14 @@
 
 namespace OPNsense\Auth\SSOProviders;
 
+use OPNsense\Core\Config;
 use Generator;
 
 class OIDCContainer implements ISSOContainer
 {
     public function listProviders(): \Generator
     {
-        $authServers = \config_read_array('system', 'authserver');
+        $authServers = Config::getInstance()->object()->system->authserver;
         foreach ($authServers as $server) {
             if ($server['type'] !== 'oidc')
                 continue;

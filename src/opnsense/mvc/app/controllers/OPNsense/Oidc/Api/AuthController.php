@@ -2,8 +2,6 @@
 
 namespace OPNsense\Oidc\Api;
 
-require_once("config.inc");
-
 use OPNsense\Auth\AuthenticationFactory;
 use OPNsense\Auth\OIDC;
 use OPNsense\Base\ApiControllerBase;
@@ -204,8 +202,6 @@ class AuthController extends ApiControllerBase
         // no password set, authentication handled via OIDC
 
         Config::getInstance()->save();
-        \write_config("Created OIDC user $username");
-
         return [
             'name'   => $username,
             'email'  => $email,
