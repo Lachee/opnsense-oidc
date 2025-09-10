@@ -59,7 +59,7 @@ class AuthController extends ApiControllerBase
 
         $mimeType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
         $this->response->setHeader('Content-Type', $mimeType);
-        $this->response->setHeader('Cache-Control', 'public, max-age=86400'); // cache for 1 day
+        $this->response->setHeader('Cache-Control', 'public, max-age=31536000, immutable'); // cache for 1 year, aggressive
         return $imageData;
     }
 
