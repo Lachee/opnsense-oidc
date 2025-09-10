@@ -65,7 +65,7 @@ class OIDC extends Local implements IAuthConnector
      */
     public function getDescription()
     {
-        return gettext('OpenID Connect');
+        return "<i class='fa fa-key-o fa-fw fa-brands fa-openid'></i> " . gettext('OpenID Connect');
     }
 
     /**
