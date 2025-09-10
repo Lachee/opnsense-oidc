@@ -42,12 +42,19 @@ class AuthController extends ApiControllerBase
             $this->response->setStatusCode(404, "Not Found");
             return "Invalid icon URL.";
         }
+        // Proxy the image using cURL
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $imageData = curl_exec($ch);
+        $curlErr = curl_error($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
 
-        // Proxy the image
-        $imageData = @file_get_contents($url);
-        if ($imageData === false) {
+        if ($imageData === false || $httpCode !== 200) {
             $this->response->setStatusCode(404, "Not Found");
-            return "Unable to fetch icon.";
+            return "Unable to fetch icon. " . ($curlErr ?: "HTTP $httpCode");
         }
 
         $finfo = new \finfo(FILEINFO_MIME_TYPE);
