@@ -23,13 +23,52 @@ class AuthController extends ApiControllerBase
         return true;
     }
 
+    public function iconAction()
+    {
+        $provider = $this->request->get('provider');
+        if (empty($provider)) {
+            $this->response->setStatusCode(400, "Bad Request");
+            return "Missing authentication provider.";
+        }
+
+        $auth = (new AuthenticationFactory())->get($provider);
+        if ($auth == null || $auth->getType() !== 'oidc') {
+            $this->response->setStatusCode(404, "Not Found");
+            return false;
+        }
+
+        $url = $auth->oidcIconUrl;
+        if (empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
+            $this->response->setStatusCode(404, "Not Found");
+            return false;
+        }
+
+        // Proxy the image
+        $imageData = @file_get_contents($url);
+        if ($imageData === false) {
+            $this->response->setStatusCode(404, "Not Found");
+            return false;
+        }
+
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $mimeType = $finfo->buffer($imageData);
+        if (!in_array($mimeType, ['image/png', 'image/svg+xml', 'image/jpeg'])) {
+            $this->response->setStatusCode(415, "Unsupported Media Type");
+            return "Unsupported image type.";
+        }
+
+        $this->response->setHeader('Content-Type', $mimeType);
+        $this->response->setHeader('Cache-Control', 'public, max-age=86400'); // cache for 1 day
+        return $imageData;
+    }
+
     /**
      * reconfigure HelloWorld
      */
     public function loginAction()
-    {        
-        if ($this->session->get('Username') != null)  {
-            $this->response->setStatusCode(400, "Bad Request");            
+    {
+        if ($this->session->get('Username') != null) {
+            $this->response->setStatusCode(400, "Bad Request");
             return "Already logged in.";
         }
 
@@ -42,7 +81,7 @@ class AuthController extends ApiControllerBase
         // $_SESSION['openid_connect_provider'] = $provider;
         $this->session->set('openid_connect_provider', $provider);
         $user = $this->authenticate($provider);
-        
+
         $this->session->close();
         if ($user === false)
             return 'Redirecting...';
@@ -52,7 +91,7 @@ class AuthController extends ApiControllerBase
 
     public function callbackAction()
     {
-        if ($this->session->get('Username') != null)  {
+        if ($this->session->get('Username') != null) {
             $this->response->setStatusCode(400, "Bad Request");
             return "Already logged in.";
         }
@@ -63,7 +102,7 @@ class AuthController extends ApiControllerBase
             return "Missing authentication provider. Please try the flow again.";
         }
         $this->session->remove('openid_connect_provider');
-        
+
         // Check the OIDC flow
         $user = $this->authenticate($provider);
         if ($user === false) {

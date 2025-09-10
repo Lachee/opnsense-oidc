@@ -47,6 +47,7 @@ class OIDC extends Local implements IAuthConnector
     public $oidcUserInfoEndpoint = null;
 
     public $oidcCustomButton = null;
+    public $oidcIconUrl = null;
 
 
     /**
@@ -81,6 +82,7 @@ class OIDC extends Local implements IAuthConnector
             'oidc_authorization_endpoint' => 'oidcAuthorizationEndpoint',
             'oidc_token_endpoint' => 'oidcTokenEndpoint',
             'oidc_userinfo_endpoint' => 'oidcUserInfoEndpoint',
+            'oidc_icon_url' => 'oidcIconUrl',
         ];
 
         // >> map properties 1-on-1
@@ -118,31 +120,38 @@ class OIDC extends Local implements IAuthConnector
                 'type' => 'text',
                 'validate' => fn($value) => !empty($value) ? [] : [gettext('Client Secret must not be empty. "Public Clients" are not supported.')]
             ],
+            'oidc_icon_url' => [
+                'name' => gettext('Icon URL'),
+                'help' => gettext('URL to an icon representing the OIDC provider. This should be a small image (16x16 or 32x32) in either PNG or SVG format. This image will be proxied.'),
+                'type' => 'text',
+                'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Icon URL needs a valid URL.')],
+            ],
             'oidc_custom_button' => [
                 'name' => gettext('Custom Button'),
-                'help' => gettext('Custom HTML Button. Use <code>%name%</code> as a template for the OIDC\'s name and <code>%url%</code> as the href for the button.'),
+                'help' => gettext('Custom HTML Button. The templated <code>%name%</code>, <code>%url%</code>, and <code>%icon%</code> are available.'),
                 'type' => 'text',
                 'validate' => fn($value) => [],
             ],
-            
-            'oidc_authorization_endpoint' => [
-                'name' => gettext('Authorization Endpoint'),
-                'help' => gettext('URL endpoint for the authorization. This is provided on discovery. ') . $callbackURL,                
-                'type' => 'text',
-                'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
-            ],            
-            'oidc_token_endpoint' => [
-                'name' => gettext('Token Endpoint'),                
-                'help' => gettext('URL endpoint for the token. This is provided on discovery.'),
-                'type' => 'text',
-                'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
-            ],            
-            'oidc_userinfo_endpoint' => [
-                'name' => gettext('User Info Endpoint'),
-                'help' => gettext('URL endpoint for the user info. This is provided on discovery.'),
-                'type' => 'text',
-                'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
-            ],
+
+            // Not Used: Discovery is only supported at the moment
+            // 'oidc_authorization_endpoint' => [
+            //     'name' => gettext('Authorization Endpoint'),
+            //     'help' => gettext('URL endpoint for the authorization. This is provided on discovery. ') . $callbackURL,
+            //     'type' => 'text',
+            //     'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
+            // ],
+            // 'oidc_token_endpoint' => [
+            //     'name' => gettext('Token Endpoint'),
+            //     'help' => gettext('URL endpoint for the token. This is provided on discovery.'),
+            //     'type' => 'text',
+            //     'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
+            // ],
+            // 'oidc_userinfo_endpoint' => [
+            //     'name' => gettext('User Info Endpoint'),
+            //     'help' => gettext('URL endpoint for the user info. This is provided on discovery.'),
+            //     'type' => 'text',
+            //     'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
+            // ],
         ];
 
         return $options;
