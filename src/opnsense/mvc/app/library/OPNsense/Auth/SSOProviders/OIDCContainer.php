@@ -22,7 +22,7 @@ class OIDCContainer implements ISSOContainer
             if (!empty($server['oidc_custom_button'])) {
                 $opts['html_content'] = $server['oidc_custom_button'];
 
-                $iconUrl = "/api/oidc/icon?provider={$server['name']}";
+                $iconUrl = "/api/oidc/auth/icon?provider={$server['name']}";
                 $opts['html_content'] = str_replace('%icon%', $iconUrl, $opts['html_content']);
                 $opts['html_content'] = str_replace('%name%', $opts['name'], $opts['html_content']);
                 $opts['html_content'] = str_replace('%url%', $opts['login_uri'], $opts['html_content']);

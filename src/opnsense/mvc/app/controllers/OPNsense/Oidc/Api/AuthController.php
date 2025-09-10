@@ -34,20 +34,20 @@ class AuthController extends ApiControllerBase
         $auth = (new AuthenticationFactory())->get($provider);
         if ($auth == null || $auth->getType() !== 'oidc') {
             $this->response->setStatusCode(404, "Not Found");
-            return false;
+            return "Authentication provider not found.";
         }
 
         $url = $auth->oidcIconUrl;
         if (empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
             $this->response->setStatusCode(404, "Not Found");
-            return false;
+            return "Invalid icon URL.";
         }
 
         // Proxy the image
         $imageData = @file_get_contents($url);
         if ($imageData === false) {
             $this->response->setStatusCode(404, "Not Found");
-            return false;
+            return "Unable to fetch icon.";
         }
 
         $finfo = new \finfo(FILEINFO_MIME_TYPE);
