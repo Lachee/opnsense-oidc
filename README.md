@@ -1,6 +1,41 @@
 # Installation
-
 Package `net-mgmt/oidc`
+
+# Configuration
+## Provider Url
+This is a link to the provider. The URL will need to have `/.well-known/openid-connect` available for automatic discovery.
+
+## Client ID
+The provided ID from your OIDC provider
+
+## Client Secret
+The secret from your OIDC provider
+
+## Icon Url
+An optional URL that will be proxied for the login button. You can access it at `/api/oidc/auth/icon?provider=<name>`
+
+## Custom Button 
+When provided, the button will be replaced with the custom one. 
+There are several templates available:
+- `%name%` Name of the provider 
+- `%url%` URL that will start the auth flow
+- `%icon%` The proxied icon image (useful to avoid CORS).
+
+As an example, here is one that makes a nice big icon next to the login button
+```html
+<a href="%url%" class="btn btn-primary"><img src="%icon%" style="height: 2em"> Login with %name%</a> 
+<style>.login-sso-link-container { display: flex; justify-content: end; margin-top: 15px; margin-right: 9px; }</style>
+```
+
+| Before | After |
+|--------|-------|
+| | |
+
+# Provider Setup
+## PocketID / Generic OIDC
+- Set the Client ID and Client Secret
+- Set the provider url to the first part of the discovery url
+- Set the callback to `https://<ip>/api/oidc/auth/callback`
 
 # Development
 ## VScode
@@ -40,27 +75,3 @@ Here are the steps i have gotten to work with setup.
 6. Copy the project's content to `/usr/plugins/devel/project-name`
 7. Build with `cd /usr/plugins/devel/project-name && make package`
 8. Install `pkg add /usr/plugins/devel/project-name/work/pkg/*.pkg`
-
-# AI Slop
-Installation Instructions for OPNsense OIDC Plugin:
-
-1. Create plugin directory structure:
-   mkdir -p /usr/local/opnsense/mvc/app/plugins/OPNsense/Oidc
-
-2. Copy this repo into that folder, such that the README.md would be `/usr/local/opnsense/mvc/app/plugins/OPNsense/Oidc/README.md`
-
-3. Register the plugin menu in /usr/local/opnsense/mvc/app/models/OPNsense/Base/Menu/MenuSystem.xml:
-   <Services>
-       <OIDC VisibleName="OIDC Authentication" url="/ui/oidc/"/>
-   </Services>
-
-4. Add ACL permissions in /usr/local/opnsense/mvc/app/config/ACL_Legacy_Page_Map.php
-
-5. Restart web server:
-   service nginx restart
-   configctl webgui restart
-
-Usage:
-- Configure OIDC settings in Services -> OIDC Authentication
-- Users can initiate OIDC login via /api/oidc/auth
-- Add "Login with OIDC" button to main login page
