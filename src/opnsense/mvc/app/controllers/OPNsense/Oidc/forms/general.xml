@@ -1,8 +1,0 @@
-<form>
-    <field>
-        <id>oidc.general.Enabled</id>
-        <label>Enable</label>
-        <type>checkbox</type>
-        <help>Enable this feature</help>
-    </field>
-</form>
