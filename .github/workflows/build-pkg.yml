@@ -26,7 +26,7 @@ jobs:
           path: ${{ env.PLUGIN_CATEGORY }}/${{ env.PLUGIN_NAME }}
 
       - name: Build package in FreeBSD
-        uses: vmactions/freebsd-vm@1
+        uses: vmactions/freebsd-vm@v1
         with:
           envs: 'PLUGIN_NAME PLUGIN_CATEGORY'
           usesh: true
