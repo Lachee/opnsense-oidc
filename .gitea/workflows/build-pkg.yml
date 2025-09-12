@@ -1,11 +1,9 @@
 name: 📦 Build Package
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
+    branches: [ main ]
 
 env:
   PLUGIN_NAME: oidc
@@ -13,28 +11,24 @@ env:
 
 jobs:
   build:
-    runs-on: freebsd
+    runs-on: freebsd  # note: custom runner VM
     steps:
-      # Clone the plugin build repo
       - name: Checkout plugins
         run: |
           git clone --depth 1 https://github.com/opnsense/plugins.git ${GITHUB_WORKSPACE}
 
-      # Clone into the plugin structure
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           path: ${{ env.PLUGIN_CATEGORY }}/${{ env.PLUGIN_NAME }}
 
-      # Build the package
       - name: Build package
         run: |
           cd ${{ env.PLUGIN_CATEGORY }}/${{ env.PLUGIN_NAME }}
           make package
 
-      # Upload the built package as an artifact
       - name: Upload artifact
         uses: christopherhx/gitea-upload-artifact@v4
         with:
-          name: ${{ env.PLUGIN_NAME }}.pkg
+          name: os-${{ env.PLUGIN_NAME }}
           path: ${{ env.PLUGIN_CATEGORY }}/${{ env.PLUGIN_NAME }}/work/pkg/*.pkg

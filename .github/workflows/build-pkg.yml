@@ -1,0 +1,44 @@
+name: 📦 Build Package
+
+on:
+    push:
+        branches: [ main ]
+    pull_request:
+        branches: [ main ]
+
+# Hey fellow developer, yes this library is FOSS.
+# Feel free to pinch this build script
+
+env:
+  PLUGIN_NAME: oidc
+  PLUGIN_CATEGORY: devel
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugins
+        run: git clone --depth 1 https://github.com/opnsense/plugins.git ${GITHUB_WORKSPACE}
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.PLUGIN_CATEGORY }}/${{ env.PLUGIN_NAME }}
+
+      - name: Build package in FreeBSD
+        uses: vmactions/freebsd-vm@1
+        with:
+          envs: 'PLUGIN_NAME PLUGIN_CATEGORY'
+          usesh: true
+          release: "14.3"
+          prepare: |
+            pkg install -y git gmake
+          run: |
+            cd $PLUGIN_CATEGORY/$PLUGIN_NAME
+            make package
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: os-${{ env.PLUGIN_NAME }}
+          path: ${{ env.PLUGIN_CATEGORY }}/${{ env.PLUGIN_NAME }}/work/pkg/*.pkg
