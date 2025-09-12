@@ -134,7 +134,7 @@ class AuthController extends ApiControllerBase
             }
 
             // Create the user if allowed
-            $localUser = $this->createLocalUser($lookupUsername, $lookupEmail, $user->name ?? '', []);
+            $localUser = $this->createLocalUser($lookupUsername, $lookupEmail, $user->name ?? '',  $auth->oidcDefaultGroups);
             if ($localUser === false) {
                 $this->response->setStatusCode(500, "User creation failed");
                 return "Unable to create local account.";
@@ -142,8 +142,9 @@ class AuthController extends ApiControllerBase
         }
 
         // Create the main login session and log the user in.
+        $username = (string)$localUser->name;
         $cnf = Config::getInstance()->object();
-        $this->session->set('Username', $localUser['name']);
+        $this->session->set('Username', strval($username));
         $this->session->set('last_access', time());
         $this->session->set('protocol', strval($cnf->system->webgui->protocol));
         $this->session->set('oidc_user', $user);
@@ -188,12 +189,7 @@ class AuthController extends ApiControllerBase
             if (($username && (string)$user->name === $username) ||
                 ($email && isset($user->email) && (string)$user->email === $email)
             ) {
-                // return as array
-                return [
-                    'name'   => (string)$user->name,
-                    'email'  => (string)$user->email,
-                    'groups' => isset($user->groupname) ? explode(',', (string)$user->groupname) : []
-                ];
+                return $user;
             }
         }
 
@@ -202,36 +198,64 @@ class AuthController extends ApiControllerBase
 
 
     /** Creates a new local user. */
-    protected function createLocalUser($username, $email, $displayName = '', $groups = [])
+    protected function createLocalUser($username, $email, $displayName = '', $sync_groups = [])
     {
         if (!self::ALLOW_USER_CREATION)
             return false;
 
-        if (empty($username)) 
+        if (empty($username))
             return false;
 
+        // Create the user using a Model
         $mdl = new User();
-        
+
         /** @var ArrayField $users */
         $users = $mdl->user;
-        $node = $users->add();
-        $node->name     = $username;
-        $node->email    = $email ?? '';
-        $node->descr    = $displayName ?? $username;
-        $node->comment  = "Created with OpenID Connect";
-        $node->password = 'DEADBEEF';
-        $node->scrambled_password = "1";
-        $node->scope    = "user";
-        $node->disabled = "0";
-        
-        // Serialize and Save
-        if (!$mdl->serializeToConfig()) {
-            // TODO: Log failed
+        $user = $users->add();
+        $user->name     = $username;
+        $user->email    = $email ?? '';
+        $user->descr    = $displayName ?? $username;
+        $user->comment  = "Created with OpenID Connect";
+        $user->password = 'DEADBEEF';
+        $user->scrambled_password = "1";
+        $user->scope    = "user";
+        $user->disabled = "0";
+
+        if (!$mdl->serializeToConfig())
             return false;
-        }
 
         Config::getInstance()->save();
-        (new Backend())->configdpRun('auth sync user', [$node->name]);
-        return ['name' => $node->name];
+        (new Backend())->configdpRun('auth sync user', [$user->name]);
+
+        // Set the group
+        if (count($sync_groups) > 0) {
+            $cnf = Config::getInstance()->object();
+            foreach ($cnf->system->group as $group) {
+                $groupName = strtolower((string)$group->name);
+                if (!in_array($groupName, $sync_groups))
+                    continue;
+
+                $members = [];
+                foreach ($group->member as $member) {
+                    $members = array_merge($members, explode(',', $member));
+                }
+
+                if (in_array((string)$user->uid, $members)) {
+                    // Already in group
+                } else {
+                    syslog(LOG_NOTICE, sprintf(
+                        'User: policy change for %s link group %s',
+                        $username,
+                        (string)$group->name
+                    ));
+                    $group->member = implode(',', array_merge($members, [(string)$user->uid]));
+                }
+            }
+            Config::getInstance()->save();
+            (new Backend())->configdpRun("auth user changed", [$user->name]);
+        }
+        
+        Config::getInstance()->forceReload();
+        return $user;
     }
 }

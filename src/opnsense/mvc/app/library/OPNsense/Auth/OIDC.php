@@ -85,7 +85,6 @@ class OIDC extends Local implements IAuthConnector
             'oidc_userinfo_endpoint' => 'oidcUserInfoEndpoint',
             'oidc_icon_url' => 'oidcIconUrl',
             'oidc_create_users' => 'oidcCreateUsers',
-            'oidc_default_groups' => 'oidcDefaultGroups',
         ];
 
         // >> map properties 1-on-1
@@ -94,6 +93,8 @@ class OIDC extends Local implements IAuthConnector
                 $this->$objectProperty = $config[$confSetting];
             }
         }
+
+        $this->oidcDefaultGroups = explode(',', $config['oidc_default_groups']);
     }
 
     /**
@@ -188,7 +189,7 @@ class OIDC extends Local implements IAuthConnector
         foreach (config_read_array('system', 'group') as $group)
             $availableGroups[$group['name']] = $group['name'];
         $availableGroupsJson = json_encode($availableGroups);
-
+        
         // These are a hack to get the UI to behave. 
         return <<<JS
 // Handle custom group selector
@@ -211,11 +212,6 @@ $('[name=oidc_default_groups]')
     );
 
 // Handle changing field types
-$('[name=oidc_icon_url]')
-    .after(
-        $('<img>')
-            .attr({src: "/api/oidc/auth/icon?provider=PocketID", class: 'oidc-icon'})
-    );
 $('[name=oidc_custom_button]').attr({ rows: 10 })
 $('[name=oidc_client_secret]').attr({ type: 'password' });
 $('[name=oidc_custom_button]').each((i, elm) => {
