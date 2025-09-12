@@ -29,7 +29,7 @@ As an example, here is one that makes a nice big icon next to the login button
 
 | Before | After |
 |--------|-------|
-| | |
+| !(old login)[https://i.lu.je/2025/firefox_laeaoIMkWI.png] | !(new login)[https://i.lu.je/2025/firefox_q6dNnOaA8b.png] |
 
 # Provider Setup
 ## PocketID / Generic OIDC
