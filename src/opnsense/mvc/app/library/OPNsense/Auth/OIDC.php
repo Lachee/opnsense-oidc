@@ -41,6 +41,8 @@ class OIDC extends Local implements IAuthConnector
     public $oidcClientSecret = null;
     public $oidcCreateUsers = false;
 
+    public $oidcDefaultGroups = [];
+
     public $oidcAuthorizationEndpoint = null;
     public $oidcTokenEndpoint = null;
     public $oidcUserInfoEndpoint = null;
@@ -83,6 +85,7 @@ class OIDC extends Local implements IAuthConnector
             'oidc_userinfo_endpoint' => 'oidcUserInfoEndpoint',
             'oidc_icon_url' => 'oidcIconUrl',
             'oidc_create_users' => 'oidcCreateUsers',
+            'oidc_default_groups' => 'oidcDefaultGroups',
         ];
 
         // >> map properties 1-on-1
@@ -99,35 +102,43 @@ class OIDC extends Local implements IAuthConnector
      */
     public function getConfigurationOptions()
     {
-        $callbackURL = gettext("Set your callback URL to <code>https://<ip of opnsense>/api/oidc/auth/callback</code>.");
+
+        $callbackURL = gettext("Set your callback URL to <code>https://{opnsense-ip}/api/oidc/auth/callback</code>.");
         $options = [
             // Configuration
             'oidc_provider_url' => [
                 'name' => gettext('Provider URL'),
-                'help' => gettext('The full URL to the discovery json. It is usually in the /.well-known/. ') . $callbackURL,
+                'help' => gettext('URL to the OpenID Connect provider. The provider must contain a <code>/.well-known/openid-configuration</code>.') . ' ' . $callbackURL,
                 'type' => 'text',
                 'validate' => fn($value) => filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
 
             ],
             'oidc_client_id' => [
                 'name' => gettext('Client ID'),
-                'help' => gettext('The Client ID'),
                 'type' => 'text',
                 'validate' => fn($value) => !empty($value) ? [] : [gettext('Client ID must not be empty.')]
             ],
             'oidc_client_secret' => [
                 'name' => gettext('Client Secret'),
-                'help' => gettext('The Client Secret'),
                 'type' => 'text',
                 'validate' => fn($value) => !empty($value) ? [] : [gettext('Client Secret must not be empty. "Public Clients" are not supported.')]
             ],
 
             // Advance
             'oidc_create_users' => [
-                'name' => gettext('Auto-create Users'),
-                'help' => gettext('If a user authenticates successfully but does not exist in the local database, automatically create the user. Recommended to leave disabled.'),
+                'name' => gettext('Automatic user creation'),
+                'help' => gettext(
+                    "To be used in combination with synchronize or default groups, allow the authenticator to create new local users after " .
+                        "successful login with group memberships returned for the user."
+                ),
                 'type' => 'checkbox',
                 'validate' => fn($value) => [],
+            ],
+            'oidc_default_groups' => [
+                'name' => gettext('Default groups'),
+                'help' => gettext("Group(s) to add by default when creating users"),
+                'type' => 'text',
+                'default' => join(',', $this->oidcDefaultGroups)
             ],
 
             // Decorative
@@ -143,26 +154,10 @@ class OIDC extends Local implements IAuthConnector
                 'type' => 'text',
                 'validate' => fn($value) => [],
             ],
-
-            // Not Used: Discovery is only supported at the moment
-            // 'oidc_authorization_endpoint' => [
-            //     'name' => gettext('Authorization Endpoint'),
-            //     'help' => gettext('URL endpoint for the authorization. This is provided on discovery. ') . $callbackURL,
-            //     'type' => 'text',
-            //     'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
-            // ],
-            // 'oidc_token_endpoint' => [
-            //     'name' => gettext('Token Endpoint'),
-            //     'help' => gettext('URL endpoint for the token. This is provided on discovery.'),
-            //     'type' => 'text',
-            //     'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
-            // ],
-            // 'oidc_userinfo_endpoint' => [
-            //     'name' => gettext('User Info Endpoint'),
-            //     'help' => gettext('URL endpoint for the user info. This is provided on discovery.'),
-            //     'type' => 'text',
-            //     'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
-            // ],
+            '__oidc_script' => [
+                'name' => '',
+                'help' => "<style>{$this->getConfigurationStyle()}</style><script>{$this->getConfigurationScript()}</script>"
+            ]
         ];
 
         return $options;
@@ -177,33 +172,76 @@ class OIDC extends Local implements IAuthConnector
         return [];
     }
 
-    /**
-     * authenticate user against local database (in config.xml)
-     * @param string|SimpleXMLElement $username username (or xml object) to authenticate
-     * @param string $password user password
-     * @return bool authentication status
-     */
-    protected function _authenticate($username, $password)
+    public function preauth($username)
     {
-        $userObject = $this->getUser($username);
-        if ($userObject != null) {
-            if (!empty((string)$userObject->disabled)) {
-                // disabled user
-                return false;
-            }
-            if (
-                !empty($userObject->expires)
-                && strtotime("-1 day") > strtotime(date("m/d/Y", strtotime((string)$userObject->expires)))
-            ) {
-                // expired user
-                return false;
-            }
-            if (password_verify($password, (string)$userObject->password)) {
-                // password ok, return successfully authentication
-                return true;
-            }
-        }
-
         return false;
+    }
+
+    public function authenticate($username, $password)
+    {
+        return false;
+    }
+
+    protected function getConfigurationScript()
+    {
+        $availableGroups = [];
+        foreach (config_read_array('system', 'group') as $group)
+            $availableGroups[$group['name']] = $group['name'];
+        $availableGroupsJson = json_encode($availableGroups);
+
+        // These are a hack to get the UI to behave. 
+        return <<<JS
+// Handle custom group selector
+$('[name=oidc_default_groups]')
+    .attr({ type: 'hidden' })
+    .after(
+        $('<select>')
+            .attr('id', 'oidc_default_groups_select')
+            .attr('multiple', true)
+            .attr('class', 'selectpicker')
+            .on('change', function() {
+                const selected = $(this).val() || [];
+                $('[name=oidc_default_groups]').val(selected.join(','));
+            })
+            .append(
+                Object.entries($availableGroupsJson).map(([key, value]) =>
+                    $('<option>').val(key).text(value).attr({ selected: $('[name=oidc_default_groups]').val().split(',').includes(key) })
+                )
+            )
+    );
+
+// Handle changing field types
+$('[name=oidc_icon_url]')
+    .after(
+        $('<img>')
+            .attr({src: "/api/oidc/auth/icon?provider=PocketID", class: 'oidc-icon'})
+    );
+$('[name=oidc_custom_button]').attr({ rows: 10 })
+$('[name=oidc_client_secret]').attr({ type: 'password' });
+$('[name=oidc_custom_button]').each((i, elm) => {
+    const ta = $('<textarea>');
+    $.each(elm.attributes, (_, attr) => ta.attr(attr.name, attr.value));
+    ta.data($(elm).data());
+    ta.val($(elm).val());
+    $(elm).replaceWith(ta);
+});
+JS;
+    }
+
+    protected function getConfigurationStyle()
+    {
+        return <<<CSS
+        .auth_oidc:has(.oidc-icon) input { 
+            float: left;
+        }
+        .oidc-icon {
+            width: 32px;
+            height: 32px;
+        }
+        .auth_oidc:has(#help_for_field_oidc___oidc_script)
+         {
+            display: none !important;
+        }
+CSS;
     }
 }
