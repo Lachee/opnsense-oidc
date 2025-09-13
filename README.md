@@ -1,20 +1,37 @@
+# OpenID Connect for OPNsense
+This package will allow you and your administrators to login to the OPNsense dashboard with a OpenID Connect provider.
+
+![img of settings](https://i.lu.je/2025/Discord_gfAMDTPfun.png)
+
 # Installation
-Package `net-mgmt/oidc`
+Download the package from releases and install on your opnsense via the console:
+```
+pkg add os-oidc-1.0.pkg
+```
 
-# Configuration
-## Provider Url
-This is a link to the provider. The URL will need to have `/.well-known/openid-connect` available for automatic discovery.
+## Configuration
+### Provider Url
+This is a link to the provider. The URL will need to have `/.well-known/openid-configuration` available for discovery.
 
-## Client ID
+### Client ID
 The provided ID from your OIDC provider
 
-## Client Secret
+### Client Secret
 The secret from your OIDC provider
 
-## Icon Url
+### Automatic user creation
+When a user logins and does not have a matching user account in the local database, this will create a new user.  This is to be used in conjunction with `Default Groups`
+
+> [!WARNING]
+> It is recommended to keep this disabled. Your firewall isn't a service that should readily accept new users.
+
+### Default Groups
+When a new user is created, these groups will be assigned to them.
+
+### Icon Url
 An optional URL that will be proxied for the login button. You can access it at `/api/oidc/auth/icon?provider=<name>`
 
-## Custom Button 
+### Custom Button 
 When provided, the button will be replaced with the custom one. 
 There are several templates available:
 - `%name%` Name of the provider 
@@ -31,8 +48,13 @@ As an example, here is one that makes a nice big icon next to the login button
 |--------|-------|
 | ![old login](https://i.lu.je/2025/firefox_laeaoIMkWI.png) | ![new login](https://i.lu.je/2025/firefox_q6dNnOaA8b.png) |
 
-# Provider Setup
-## PocketID / Generic OIDC
+## Mapping
+Users being logged in are mapped against the `preferred_name` claim and is checked against the local database's username and email fields.
+
+There is no group maaping at this stage.
+
+## Provider Setup
+### PocketID / Generic OIDC
 - Set the Client ID and Client Secret
 - Set the provider url to the first part of the discovery url
 - Set the callback to `https://<ip>/api/oidc/auth/callback`
