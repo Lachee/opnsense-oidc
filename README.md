@@ -19,6 +19,9 @@ The provided ID from your OIDC provider
 ### Client Secret
 The secret from your OIDC provider
 
+### Username Claim
+The field from the user payload that contains the username.
+
 ### Automatic user creation
 When a user logins and does not have a matching user account in the local database, this will create a new user.  This is to be used in conjunction with `Default Groups`
 

@@ -124,7 +124,7 @@ class AuthController extends ApiControllerBase
         }
 
         // Lookup existing local user
-        $lookupUsername = $user->preferred_username ?? null;
+        $lookupUsername = $user->{$auth->oidcUsernameClaim} ?? null;
         $lookupEmail    = $user->email ?? null;
         $localUser = $this->findLocalUser($lookupUsername, $lookupEmail);
         if ($localUser === false) {

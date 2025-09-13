@@ -40,9 +40,8 @@ class OIDC extends Local implements IAuthConnector
     public $oidcClientId = null;
     public $oidcClientSecret = null;
     public $oidcCreateUsers = false;
-
+    public $oidcUsernameClaim = 'preferred_username';
     public $oidcDefaultGroups = [];
-
     public $oidcScopes = [
         'openid',
         'email',
@@ -91,6 +90,7 @@ class OIDC extends Local implements IAuthConnector
             'oidc_userinfo_endpoint' => 'oidcUserInfoEndpoint',
             'oidc_icon_url' => 'oidcIconUrl',
             'oidc_create_users' => 'oidcCreateUsers',
+            'oidc_username_claim' => 'oidcUsernameClaim',
         ];
 
         // >> map properties 1-on-1
@@ -130,6 +130,12 @@ class OIDC extends Local implements IAuthConnector
                 'name' => gettext('Client Secret'),
                 'type' => 'text',
                 'validate' => fn($value) => !empty($value) ? [] : [gettext('Client Secret must not be empty. "Public Clients" are not supported.')]
+            ],
+            'oidc_username_claim' => [
+                'name' => gettext('Username claim'),
+                'help' => gettext('The claim to use as local username. The claim must be provided by the OpenID Connect provider. Usually this is <code>preferred_username</code> or <code>email</code>.'),
+                'type' => 'text',
+                'validate' => fn($value) => !empty($value) ? [] : [gettext('Username claim must not be empty.')]
             ],
             'oidc_scopes' => [
                 'name' => gettext('Scopes'),
