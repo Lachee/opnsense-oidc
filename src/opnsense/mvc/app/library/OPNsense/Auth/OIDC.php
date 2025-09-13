@@ -43,6 +43,12 @@ class OIDC extends Local implements IAuthConnector
 
     public $oidcDefaultGroups = [];
 
+    public $oidcScopes = [
+        'openid',
+        'email',
+        'profile',
+    ];
+
     public $oidcAuthorizationEndpoint = null;
     public $oidcTokenEndpoint = null;
     public $oidcUserInfoEndpoint = null;
@@ -95,6 +101,7 @@ class OIDC extends Local implements IAuthConnector
         }
 
         $this->oidcDefaultGroups = explode(',', $config['oidc_default_groups']);
+        $this->oidcScopes = explode(',', $config['oidc_scopes']);
     }
 
     /**
@@ -123,6 +130,13 @@ class OIDC extends Local implements IAuthConnector
                 'name' => gettext('Client Secret'),
                 'type' => 'text',
                 'validate' => fn($value) => !empty($value) ? [] : [gettext('Client Secret must not be empty. "Public Clients" are not supported.')]
+            ],
+            'oidc_scopes' => [
+                'name' => gettext('Scopes'),
+                'help' => gettext('Scopes to request during authentication. The <code>openid</code> scope is required.'),
+                'type' => 'text',
+                'default' => join(',', $this->oidcScopes),
+                'validate' => fn($value) => [],
             ],
 
             // Advance
@@ -189,7 +203,7 @@ class OIDC extends Local implements IAuthConnector
         foreach (config_read_array('system', 'group') as $group)
             $availableGroups[$group['name']] = $group['name'];
         $availableGroupsJson = json_encode($availableGroups);
-        
+
         // These are a hack to get the UI to behave. 
         return <<<JS
 // Handle custom group selector

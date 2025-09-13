@@ -165,10 +165,9 @@ class AuthController extends ApiControllerBase
 
     protected function authenticate($auth)
     {
-
         /** @var OIDC $auth */
         $client = new OidcClient($auth, $this);
-        $client->addScope(['openid', 'email', 'profile']);
+        $client->addScope($auth->oidcScopes);
 
         if (!$client->authenticate())
             return false;
@@ -254,7 +253,7 @@ class AuthController extends ApiControllerBase
             Config::getInstance()->save();
             (new Backend())->configdpRun("auth user changed", [$user->name]);
         }
-        
+
         Config::getInstance()->forceReload();
         return $user;
     }
