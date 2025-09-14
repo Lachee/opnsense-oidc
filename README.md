@@ -60,10 +60,20 @@ Users being logged in are mapped against the `preferred_name` claim and is check
 There is no group maaping at this stage.
 
 ## Provider Setup
-### PocketID / Generic OIDC
-- Set the Client ID and Client Secret
-- Set the provider url to the first part of the discovery url
-- Set the callback to `https://<ip>/api/oidc/auth/callback`
+### All Providers
+| Property | Value |
+| Callback | `https://<ip of opnsense>>/api/oidc/auth/callback` |
+
+### PocketID
+provider:
+| Property | Value |
+| Public Client | false |
+| PKCE | false |
+| Requires Re-Authentication| false |
+
+client (opnsense):
+| Setting | Value | 
+| | |
 
 # Development
 ## VScode
