@@ -62,18 +62,24 @@ There is no group maaping at this stage.
 ## Provider Setup
 ### All Providers
 | Property | Value |
+|----------|-------|
 | Callback | `https://<ip of opnsense>>/api/oidc/auth/callback` |
 
 ### PocketID
 provider:
 | Property | Value |
+|----------|-------|
 | Public Client | false |
 | PKCE | false |
 | Requires Re-Authentication| false |
 
 client (opnsense):
 | Setting | Value | 
-| | |
+|---------|-------|
+| Username claim | `preferred_username` |
+
+### Authentik
+WIP
 
 # Development
 ## VScode
