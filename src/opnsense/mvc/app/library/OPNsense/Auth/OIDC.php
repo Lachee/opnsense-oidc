@@ -116,7 +116,7 @@ class OIDC extends Local implements IAuthConnector
             // Configuration
             'oidc_provider_url' => [
                 'name' => gettext('Provider URL'),
-                'help' => gettext('URL to the OpenID Connect provider. The provider must contain a <code>/.well-known/openid-configuration</code>.') . ' ' . $callbackURL,
+                'help' => gettext('URL to the OpenID Connect provider. Either the root or the <code>/.well-known/openid-configuration</code> path.') . ' ' . $callbackURL,
                 'type' => 'text',
                 'validate' => fn($value) => filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
 
@@ -233,7 +233,7 @@ $('[name=oidc_default_groups]')
 
 // Handle changing field types
 $('[name=oidc_custom_button]').attr({ rows: 10 })
-$('[name=oidc_client_secret]').attr({ type: 'password' });
+$('[name=oidc_client_secret]').attr({ type: 'password', autocomplete: 'off' });
 $('[name=oidc_custom_button]').each((i, elm) => {
     const ta = $('<textarea>');
     $.each(elm.attributes, (_, attr) => ta.attr(attr.name, attr.value));
@@ -241,6 +241,58 @@ $('[name=oidc_custom_button]').each((i, elm) => {
     ta.val($(elm).val());
     $(elm).replaceWith(ta);
 });
+
+// Test button
+$(function() {
+    $('#submit').after(
+        $('<button>')
+        .attr({ class: 'btn btn-primary auth_options auth_oidc', style: 'margin-left: 10px' })
+        .text('Test')
+        .on('click', async (e) => {
+            e.preventDefault();
+
+            const data = {};
+            $('[name^=oidc_]').each((i, e) => data[$(e).attr('name')] = $(e).val()); 
+
+            $.ajax({
+                type: "POST",
+                url: '/api/oidc/discover/available',
+                data,
+                success: function (data) {
+                    if (data.errorMessage) {
+                        BootstrapDialog.show({
+                            title: 'OpenID Connect Test - Failed',
+                            message: data.errorMessage || 'Unknown error has occured.',
+                            type: BootstrapDialog.TYPE_DANGER
+                        });
+                        return;
+                    }
+
+                    let claimsHtml = '';
+                    let scopesHtml = '';
+                    if (data.claims && Object.keys(data.claims).length > 0)
+                        claimsHtml = `<h5>Claims</h5><ul><li>\${data.claims.join('</li><li>')}</li></ul>`;
+                    if (data.scopes && Object.keys(data.scopes).length > 0)
+                        scopesHtml = `<h5>Scopes</h5><ul><li>\${data.scopes.join('</li><li>')}</li></ul>`;
+                    
+                    BootstrapDialog.show({
+                        title: 'OpenID Connect Test - Success',
+                        message: 'Successfully connected to the well-known.<br>' + claimsHtml + scopesHtml + "<hr>This does not test the client secret or id.",
+                        type: BootstrapDialog.TYPE_SUCCESS
+                    });
+                },
+                error: function(jqXHR) {
+                    BootstrapDialog.show({
+                        title: 'OpenID Connect Test - Failed',
+                        message: jqXHR.responseJSON?.errorMessage || jqXHR.responseText,
+                        type: BootstrapDialog.TYPE_DANGER
+                    });
+                }
+            });
+        })
+    );
+});
+
 JS;
     }
 

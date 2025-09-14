@@ -30,13 +30,23 @@ class OidcClient extends OpenIDConnectClient
     {
         $this->phpseclib_autoload('ParagonIE\ConstantTime', '/usr/local/share/phpseclib/paragonie');
         $this->phpseclib_autoload('phpseclib3', '/usr/local/share/phpseclib');
-        parent::__construct($auth->oidcProviderUrl, $auth->oidcClientId, $auth->oidcClientSecret);
+
+        parent::__construct(static::stripWellKnown($auth->oidcProviderUrl), $auth->oidcClientId, $auth->oidcClientSecret);
+
         $this->auth = $auth;
         $this->session = $controller->session;
         $this->request = $controller->request;
         $this->response = $controller->response;
 
         $this->setRedirectURL("{$this->request->getScheme()}://{$this->request->getHeader('HOST')}{$callback}");
+    }
+
+    public function getWellKnownClaims() {
+        return $this->getWellKnownConfigValue('claims_supported');
+    }
+
+    public function getWellKnownScopes() {
+        return $this->getWellKnownConfigValue('scopes_supported');
     }
 
     protected function startSession() {}
@@ -64,6 +74,13 @@ class OidcClient extends OpenIDConnectClient
     public function redirect(string $url)
     {
         $this->response->redirect($url);
+    }
+
+    private static function stripWellKnown($providerUrl) {
+        $position = strpos($providerUrl, '.well-known/');
+        if ($position >= 0)
+            return substr($providerUrl, 0, $position);
+        return $providerUrl;
     }
 
     private function phpseclib_autoload($namespace, $dir)

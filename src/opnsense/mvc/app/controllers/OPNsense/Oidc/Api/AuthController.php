@@ -86,8 +86,13 @@ class AuthController extends ApiControllerBase
         $this->session->set(self::SESSION_AUTH_PROVIDER, $provider);
 
         // Authenticate
-        $auth = $this->getAuthProvider($provider);
-        $user = $this->authenticate($auth);
+        try {
+            $auth = $this->getAuthProvider($provider);
+            $user = $this->authenticate($auth);
+        } catch (\Exception $e) {
+            $this->response->setStatusCode(500, "Server Error");
+            return "Unable to authenticate: " . $e->getMessage();
+        }
 
         $this->session->close();
         if ($user === false)
@@ -117,10 +122,15 @@ class AuthController extends ApiControllerBase
         if ($auth === null)
             return "Authentication provider not found. Please try the flow again.";
 
-        $user = $this->authenticate($auth);
-        if ($user === false) {
-            $this->response->setStatusCode(400, "Authentication not found");
-            return "Something went wrong while trying to login you in";
+        try {
+            $user = $this->authenticate($auth);
+            if ($user === false) {
+                $this->response->setStatusCode(400, "Authentication not found");
+                return "Something went wrong while trying to login you in";
+            }
+        } catch (\Exception $e) {
+            $this->response->setStatusCode(500, "Server Error");
+            return "Unable to authenticate: " . $e->getMessage();
         }
 
         // Lookup existing local user
