@@ -9,14 +9,11 @@ class OIDCContainer implements ISSOContainer
 {
     public function listProviders(): \Generator
     {
-        $authServers = Config::getInstance()->object()->system->authserver;
-        if ($authServers == null)
+        $cnf = Config::getInstance()->object();
+        if (!isset($cnf->system->authserver))
             return;
 
-        if (!is_array($authServers)) // If a user only has one auth server, it is not an array >:(
-            $authServers = [$authServers];
-
-        foreach ($authServers as $server) {
+        foreach ($cnf->system->authserver as $server) {
             if ((string)$server->type !== 'oidc')
                 continue;
 
