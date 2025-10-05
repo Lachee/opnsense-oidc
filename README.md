@@ -119,3 +119,5 @@ Here are the steps i have gotten to work with setup.
 6. Copy the project's content to `/usr/plugins/devel/project-name`
 7. Build with `cd /usr/plugins/devel/project-name && make package`
 8. Install `pkg add /usr/plugins/devel/project-name/work/pkg/*.pkg`
+
+9. 
