@@ -11,7 +11,7 @@ env:
 
 jobs:
   build:
-    runs-on: freebsd  # note: custom runner VM
+    runs-on: freebsd
     steps:
       - name: Checkout plugins
         run: |
