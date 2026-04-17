@@ -78,7 +78,7 @@ class OidcClient extends OpenIDConnectClient
 
     private static function stripWellKnown($providerUrl) {
         $position = strpos($providerUrl, '.well-known/');
-        if ($position >= 0)
+        if ($position !== false)
             return substr($providerUrl, 0, $position);
         return $providerUrl;
     }

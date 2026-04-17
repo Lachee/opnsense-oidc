@@ -144,6 +144,10 @@ class AuthController extends ApiControllerBase
             }
 
             // Create the user if allowed
+            // Fallback: use local part of email when username claim is empty
+            if (empty($lookupUsername) && !empty($lookupEmail)) {
+                $lookupUsername = strstr($lookupEmail, '@', true);
+            }
             $localUser = $this->createLocalUser($lookupUsername, $lookupEmail, $user->name ?? '',  $auth->oidcDefaultGroups);
             if ($localUser === false) {
                 $this->response->setStatusCode(500, "User creation failed");
