@@ -39,6 +39,7 @@ class OIDC extends Local implements IAuthConnector
     public $oidcProviderUrl = null;
     public $oidcClientId = null;
     public $oidcClientSecret = null;
+    public $oidcRedirectUrl = null;
     public $oidcCreateUsers = false;
     public $oidcUsernameClaim = 'preferred_username';
     public $oidcDefaultGroups = [];
@@ -84,6 +85,7 @@ class OIDC extends Local implements IAuthConnector
             'oidc_provider_url' => 'oidcProviderUrl',
             'oidc_client_id' => 'oidcClientId',
             'oidc_client_secret' => 'oidcClientSecret',
+            'oidc_redirect_url' => 'oidcRedirectUrl',
             'oidc_custom_button' => 'oidcCustomButton',
             'oidc_authorization_endpoint' => 'oidcAuthorizationEndpoint',
             'oidc_token_endpoint' => 'oidcTokenEndpoint',
@@ -146,6 +148,12 @@ class OIDC extends Local implements IAuthConnector
             ],
 
             // Advance
+            'oidc_redirect_url' => [
+                'name' => gettext('Redirect URL'),
+                'help' => gettext('The URL the provider should redirect back to after authentication.') . ' ' . $callbackURL,
+                'type' => 'text',
+                'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Redirect URL needs a valid URL.')],
+            ],
             'oidc_create_users' => [
                 'name' => gettext('Automatic user creation'),
                 'help' => gettext(

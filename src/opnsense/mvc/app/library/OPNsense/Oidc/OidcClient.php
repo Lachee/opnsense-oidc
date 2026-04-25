@@ -38,7 +38,8 @@ class OidcClient extends OpenIDConnectClient
         $this->request = $controller->request;
         $this->response = $controller->response;
 
-        $this->setRedirectURL("{$this->request->getScheme()}://{$this->request->getHeader('HOST')}{$callback}");
+        $redirectUrl = $auth->oidcRedirectUrl ?: "{$this->request->getScheme()}://{$this->request->getHeader('HOST')}{$callback}";
+        $this->setRedirectURL($redirectUrl);
     }
 
     public function getWellKnownClaims() {
