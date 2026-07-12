@@ -60,15 +60,12 @@ Users being logged in are mapped against the `preferred_name` claim and is check
 There is no group maaping at this stage.
 
 ## Provider Setup
-### All Providers
-| Property | Value |
-|----------|-------|
-| Callback | `https://<ip of opnsense>>/api/oidc/auth/callback` |
 
 ### PocketID
 provider:
 | Property | Value |
 |----------|-------|
+| Callback | `https://<ip or URL of opnsense>/api/oidc/auth/callback` |
 | Public Client | false |
 | PKCE | false |
 | Requires Re-Authentication| false |
@@ -79,7 +76,46 @@ client (opnsense):
 | Username claim | `preferred_username` |
 
 ### Authentik
-WIP
+OAuth2/OpenID provider in Authentik:
+| Property | Value |
+|----------|-------|
+| Redirect URI | `https://<ip or URL of opnsense>/api/oidc/auth/callback` |
+
+client (opnsense):
+| Setting | Value | 
+|---------|-------|
+| Username claim | `preferred_username` |
+| Icon URL | `https://<Authentik URL>/static/dist/assets/icons/icon.svg` |
+
+`Custom Button` with white Authentik icon:
+
+```html
+<a href="%url%" class="btn btn-primary">
+  <span class="login-button-icon"></span>
+  Login with %name%
+</a>
+
+<style>
+.login-sso-link-container {
+  display: flex;
+  justify-content: end;
+  margin-top: 15px;
+  margin-right: 9px;
+}
+
+.login-button-icon {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  background-color: white;
+  -webkit-mask: url("%icon%") no-repeat center;
+  mask: url("%icon%") no-repeat center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  margin-right: 6px;
+}
+</style>
+```
 
 # Development
 ## VScode
@@ -119,5 +155,3 @@ Here are the steps i have gotten to work with setup.
 6. Copy the project's content to `/usr/plugins/devel/project-name`
 7. Build with `cd /usr/plugins/devel/project-name && make package`
 8. Install `pkg add /usr/plugins/devel/project-name/work/pkg/*.pkg`
-
-9. 
