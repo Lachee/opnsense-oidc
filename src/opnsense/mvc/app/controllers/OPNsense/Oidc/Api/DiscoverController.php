@@ -51,7 +51,8 @@ class DiscoverController extends ApiControllerBase
         // Test the client
         try {
             /** @var OIDC $auth */
-            $client = new OidcClient($auth, $this);
+            // Metadata only: this client never redirects, so the host is a placeholder.
+            $client = new OidcClient($auth, $this, 'localhost');
             return [
                 'issuer' => $client->getWellKnownIssuer(),
                 'claims' => $client->getWellKnownClaims(),

@@ -50,7 +50,10 @@ class OidcClient extends OpenIDConnectClient
     /** @var bool true while authenticate() validates the ID token from the token endpoint */
     private $validatingIdToken = false;
 
-    public function __construct(OIDC $auth, Controller $controller, string $callback = '/api/oidc/auth/callback')
+    /**
+     * @param string $host vetted "name[:port]" for the redirect_uri (see vetHost()); never the raw Host header
+     */
+    public function __construct(OIDC $auth, Controller $controller, string $host, string $callback = '/api/oidc/auth/callback')
     {
         $this->phpseclib_autoload('ParagonIE\ConstantTime', '/usr/local/share/phpseclib/paragonie');
         $this->phpseclib_autoload('phpseclib3', '/usr/local/share/phpseclib');
@@ -63,7 +66,7 @@ class OidcClient extends OpenIDConnectClient
         $this->request = $controller->request;
         $this->response = $controller->response;
 
-        $this->setRedirectURL("{$this->request->getScheme()}://{$this->request->getHeader('HOST')}{$callback}");
+        $this->setRedirectURL("{$this->request->getScheme()}://{$host}{$callback}");
 
         // PKCE via the library's built-in support; only sent when the provider
         // advertises S256 in its discovery document (Authentik does).
@@ -99,6 +102,29 @@ class OidcClient extends OpenIDConnectClient
                 $this->clearFlowState();
             }
         }
+    }
+
+    /**
+     * Returns the Host header value normalised to "name[:port]" if its name is
+     * one of $allowedNames (compared case-insensitively), else null.
+     */
+    public static function vetHost(string $hostHeader, array $allowedNames): ?string
+    {
+        $h = strtolower(trim($hostHeader));
+        if (!preg_match('/^(\[[0-9a-f:.]+\]|[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)(?::([0-9]{1,5}))?$/', $h, $m)) {
+            return null;
+        }
+        $name = $m[1];
+        $port = $m[2] ?? '';
+        if ($port !== '' && ((int)$port < 1 || (int)$port > 65535)) {
+            return null;
+        }
+        foreach ($allowedNames as $allowed) {
+            if (is_string($allowed) && $allowed !== '' && strtolower($allowed) === trim($name, '[]')) {
+                return $port !== '' ? "{$name}:{$port}" : $name;
+            }
+        }
+        return null;
     }
 
     private function clearFlowState(): void
@@ -140,9 +166,24 @@ class OidcClient extends OpenIDConnectClient
             throw new OpenIDConnectClientException('Invalid JWKS document');
         }
 
+        // Only RSA signature keys are candidates. Encryption keys (use=enc)
+        // must never verify a signature, and a key type php-jwt doesn't
+        // support would otherwise make parseKeySet() throw and block every login.
+        $candidates = array_values(array_filter(
+            is_array($jwks['keys'] ?? null) ? $jwks['keys'] : [],
+            fn($k) => is_array($k)
+                && ($k['kty'] ?? null) === 'RSA'
+                && is_string($k['n'] ?? null) && is_string($k['e'] ?? null)
+                && (!isset($k['use']) || $k['use'] === 'sig')
+                && (!isset($k['key_ops']) || (is_array($k['key_ops']) && in_array('verify', $k['key_ops'], true)))
+        ));
+        if (count($candidates) === 0) {
+            throw new OpenIDConnectClientException('JWKS has no RSA signing keys');
+        }
+
         // Keys without their own "alg" are bound to the (already allow-listed)
         // header algorithm; keys that declare a different alg won't match.
-        $keys = JWK::parseKeySet($jwks, $alg);
+        $keys = JWK::parseKeySet(['keys' => $candidates], $alg);
 
         JWT::$leeway = self::LEEWAY_SECONDS;
         try {
