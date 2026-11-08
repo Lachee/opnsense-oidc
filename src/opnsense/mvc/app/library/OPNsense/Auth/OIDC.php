@@ -41,6 +41,8 @@ class OIDC extends Local implements IAuthConnector
     public $oidcClientSecret = null;
     public $oidcCreateUsers = false;
     public $oidcMatchEmail = false;
+    /** Off by default: unset/unticked means email_verified is required. */
+    public $oidcAllowUnverifiedEmail = false;
     public $oidcForceLogin = false;
     public $oidcUsernameClaim = 'preferred_username';
     public $oidcDefaultGroups = [];
@@ -56,6 +58,8 @@ class OIDC extends Local implements IAuthConnector
 
     public $oidcCustomButton = null;
     public $oidcIconUrl = null;
+    /** @var string comma-separated "localuser=subject" pairs; see getSubjectBindings() */
+    public $oidcSubjectBinding = '';
 
 
     /**
@@ -94,7 +98,9 @@ class OIDC extends Local implements IAuthConnector
             'oidc_create_users' => 'oidcCreateUsers',
             'oidc_username_claim' => 'oidcUsernameClaim',
             'oidc_match_email' => 'oidcMatchEmail',
+            'oidc_allow_unverified_email' => 'oidcAllowUnverifiedEmail',
             'oidc_force_login' => 'oidcForceLogin',
+            'oidc_subject_binding' => 'oidcSubjectBinding',
         ];
 
         // >> map properties 1-on-1
@@ -108,6 +114,22 @@ class OIDC extends Local implements IAuthConnector
         if (!empty($config['oidc_scopes'])) {
             $this->oidcScopes = explode(',', $config['oidc_scopes']);
         }
+    }
+
+    /**
+     * Parses the subject binding setting into [localuser => subject].
+     * @return array<string,string>
+     */
+    public function getSubjectBindings(): array
+    {
+        $bindings = [];
+        foreach (preg_split('/[\s,]+/', (string)$this->oidcSubjectBinding, -1, PREG_SPLIT_NO_EMPTY) as $pair) {
+            $parts = explode('=', $pair, 2);
+            if (count($parts) === 2 && $parts[0] !== '' && $parts[1] !== '') {
+                $bindings[$parts[0]] = $parts[1];
+            }
+        }
+        return $bindings;
     }
 
     /**
@@ -164,7 +186,13 @@ class OIDC extends Local implements IAuthConnector
             ],
             'oidc_match_email' => [
                 'name' => gettext('Match by email'),
-                'help' => gettext('Also match local accounts by the email claim when the username claim does not match. Only enable this if users cannot change their email address at the provider.'),
+                'help' => gettext('Also match local accounts by the email claim when the username claim does not match. Only addresses the provider marks <code>email_verified</code> are used unless "Allow unverified email" is ticked. Only enable this if users cannot change their email address at the provider.'),
+                'type' => 'checkbox',
+                'validate' => fn($value) => [],
+            ],
+            'oidc_allow_unverified_email' => [
+                'name' => gettext('Allow unverified email'),
+                'help' => gettext('By default the email claim is only used (for "Match by email" and for new accounts) when the provider marks it <code>email_verified</code>. Tick this only for a provider that never sends <code>email_verified</code> and does not let users set their own address.'),
                 'type' => 'checkbox',
                 'validate' => fn($value) => [],
             ],
@@ -173,6 +201,13 @@ class OIDC extends Local implements IAuthConnector
                 'help' => gettext('Send prompt=login so the provider re-authenticates the user on every firewall login instead of reusing an existing provider session.'),
                 'type' => 'checkbox',
                 'validate' => fn($value) => [],
+            ],
+            'oidc_subject_binding' => [
+                'name' => gettext('Subject binding'),
+                'help' => gettext('Optional. Comma-separated <code>localuser=subject</code> pairs. When set, each local account can only be signed into by the provider subject (<code>sub</code> claim) bound to it, and accounts not listed are refused. The subject is logged on every OIDC login attempt.'),
+                'type' => 'text',
+                'validate' => fn($value) => empty($value) || preg_match('/^\s*[^=\s,]+=[^=\s,]+(\s*[,\s]\s*[^=\s,]+=[^=\s,]+)*\s*$/', (string)$value)
+                    ? [] : [gettext('Use comma-separated localuser=subject pairs.')],
             ],
             'oidc_default_groups' => [
                 'name' => gettext('Default groups'),
@@ -232,7 +267,8 @@ class OIDC extends Local implements IAuthConnector
         $availableGroups = [];
         foreach (config_read_array('system', 'group') as $group)
             $availableGroups[$group['name']] = $group['name'];
-        $availableGroupsJson = json_encode($availableGroups);
+        // Inlined into a <script> element: escape <, >, &, quotes.
+        $availableGroupsJson = json_encode($availableGroups, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 
         // These are a hack to get the UI to behave. 
         return <<<JS

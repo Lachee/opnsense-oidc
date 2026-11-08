@@ -50,7 +50,10 @@ class OidcClient extends OpenIDConnectClient
     /** @var bool true while authenticate() validates the ID token from the token endpoint */
     private $validatingIdToken = false;
 
-    public function __construct(OIDC $auth, Controller $controller, string $callback = '/api/oidc/auth/callback')
+    /**
+     * @param string $host vetted "name[:port]" for the redirect_uri (see vetHost()); never the raw Host header
+     */
+    public function __construct(OIDC $auth, Controller $controller, string $host, string $callback = '/api/oidc/auth/callback')
     {
         $this->phpseclib_autoload('ParagonIE\ConstantTime', '/usr/local/share/phpseclib/paragonie');
         $this->phpseclib_autoload('phpseclib3', '/usr/local/share/phpseclib');
@@ -63,7 +66,7 @@ class OidcClient extends OpenIDConnectClient
         $this->request = $controller->request;
         $this->response = $controller->response;
 
-        $this->setRedirectURL("{$this->request->getScheme()}://{$this->request->getHeader('HOST')}{$callback}");
+        $this->setRedirectURL("{$this->request->getScheme()}://{$host}{$callback}");
 
         // PKCE via the library's built-in support; only sent when the provider
         // advertises S256 in its discovery document (Authentik does).
@@ -99,6 +102,29 @@ class OidcClient extends OpenIDConnectClient
                 $this->clearFlowState();
             }
         }
+    }
+
+    /**
+     * Returns the Host header value normalised to "name[:port]" if its name is
+     * one of $allowedNames (compared case-insensitively), else null.
+     */
+    public static function vetHost(string $hostHeader, array $allowedNames): ?string
+    {
+        $h = strtolower(trim($hostHeader));
+        if (!preg_match('/^(\[[0-9a-f:.]+\]|[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?)(?::([0-9]{1,5}))?$/', $h, $m)) {
+            return null;
+        }
+        $name = $m[1];
+        $port = $m[2] ?? '';
+        if ($port !== '' && ((int)$port < 1 || (int)$port > 65535)) {
+            return null;
+        }
+        foreach ($allowedNames as $allowed) {
+            if (is_string($allowed) && $allowed !== '' && strtolower($allowed) === trim($name, '[]')) {
+                return $port !== '' ? "{$name}:{$port}" : $name;
+            }
+        }
+        return null;
     }
 
     private function clearFlowState(): void

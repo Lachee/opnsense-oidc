@@ -99,6 +99,28 @@ class AuthController extends ApiControllerBase
         return self::clean($this->request->getClientAddress() ?? '-', 64);
     }
 
+    /**
+     * The Host the browser used, if it is one of the firewall's configured
+     * names (System > Settings > General hostname.domain, or Alternate
+     * Hostnames under Administration). The redirect_uri is built from it, so
+     * an arbitrary Host header must never reach the provider or the token
+     * request. Returns null when the Host is not a configured name.
+     */
+    private function callbackHost(): ?string
+    {
+        $cnf = Config::getInstance()->object();
+        $names = [];
+        $hostname = strtolower(trim((string)($cnf->system->hostname ?? '')));
+        $domain = strtolower(trim((string)($cnf->system->domain ?? '')));
+        if ($hostname !== '') {
+            $names[] = $domain !== '' ? "{$hostname}.{$domain}" : $hostname;
+        }
+        foreach (preg_split('/[\s,]+/', (string)($cnf->system->webgui->althostnames ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $alt) {
+            $names[] = strtolower($alt);
+        }
+        return OidcClient::vetHost((string)$this->request->getHeader('HOST'), $names);
+    }
+
     /** True if the provider is selected as a WebGui authentication server. */
     private function isEnabledForWebGui(string $provider): bool
     {
@@ -199,10 +221,20 @@ class AuthController extends ApiControllerBase
             ));
             return $this->fail(403, "This authentication provider is not enabled for the web GUI.");
         }
+        $host = $this->callbackHost();
+        if ($host === null) {
+            $this->getLogger('oidc')->warning(sprintf(
+                'OIDC login refused: Host %s is not a configured name of this firewall, from %s',
+                self::clean($this->request->getHeader('HOST'), 64),
+                $this->clientAddress()
+            ));
+            return $this->fail(400, "Open the web GUI by its configured host name to sign in with OpenID Connect "
+                . "(System > Settings > General, or add the name to Alternate Hostnames under System > Settings > Administration).");
+        }
         $this->session->set(self::SESSION_AUTH_PROVIDER, $provider);
 
         try {
-            $user = $this->authenticate($auth);
+            $user = $this->authenticate($auth, $host);
         } catch (\Throwable $e) {
             return $this->fail(500, "Unable to authenticate. See the system log for details.", $e);
         }
@@ -249,9 +281,15 @@ class AuthController extends ApiControllerBase
         if (!$this->isEnabledForWebGui($provider)) {
             return $this->fail(403, "This authentication provider is not enabled for the web GUI.");
         }
+        // Must be the same vetted host the flow started on, or the token
+        // request's redirect_uri won't match the authorization request.
+        $host = $this->callbackHost();
+        if ($host === null) {
+            return $this->fail(400, "Invalid callback host. Please try the flow again.");
+        }
 
         try {
-            $user = $this->authenticate($auth);
+            $user = $this->authenticate($auth, $host);
             if ($user === false) {
                 return $this->fail(400, "Something went wrong while trying to log you in.");
             }
@@ -264,7 +302,12 @@ class AuthController extends ApiControllerBase
         if ($lookupUsername !== null && !is_string($lookupUsername)) {
             $lookupUsername = null;
         }
-        $claimEmail  = (isset($user->email) && is_string($user->email)) ? $user->email : null;
+        // By default only an address the provider says it verified is used,
+        // for matching and for new accounts; an unverified one could be
+        // anybody's. "Allow unverified email" turns this off per server.
+        $emailVerified = $auth->oidcAllowUnverifiedEmail || (isset($user->email_verified)
+            && ($user->email_verified === true || $user->email_verified === 'true'));
+        $claimEmail  = ($emailVerified && isset($user->email) && is_string($user->email)) ? $user->email : null;
         $lookupEmail = $auth->oidcMatchEmail ? $claimEmail : null;
         $localUser = $this->findLocalUser($lookupUsername, $lookupEmail);
         if ($localUser === false) {
@@ -289,12 +332,14 @@ class AuthController extends ApiControllerBase
         // OPNsense\Auth\Local::_authenticate() (Local.php ~l.156-162 in 26.7).
         // Core exposes no public "may this account log in" check to call.
         $username = (string)$localUser->name;
-        $refusal = $this->accountRefusal($localUser);
+        $subject = (string)($user->sub ?? '');
+        $refusal = $this->accountRefusal($localUser) ?? $this->subjectRefusal($auth, $username, $subject);
         if ($refusal !== null) {
             $this->audit(LOG_WARNING, sprintf(
-                "user %s could not authenticate for WebGui [using OIDC provider %s] (%s) from %s",
+                "user %s could not authenticate for WebGui [using OIDC provider %s, subject %s] (%s) from %s",
                 self::clean($username),
                 self::clean($provider),
+                self::clean($subject),
                 $refusal,
                 $this->clientAddress()
             ));
@@ -334,9 +379,10 @@ class AuthController extends ApiControllerBase
         $this->session->close();
 
         $this->audit(LOG_NOTICE, sprintf(
-            "user %s authenticated successfully for WebGui [using OIDC provider %s] from %s",
+            "user %s authenticated successfully for WebGui [using OIDC provider %s, subject %s] from %s",
             self::clean($username),
             self::clean($provider),
+            self::clean($subject),
             $this->clientAddress()
         ));
         if (empty($cnf->system->webgui->quietlogin)) {
@@ -373,6 +419,28 @@ class AuthController extends ApiControllerBase
         return null;
     }
 
+    /**
+     * Subject binding (optional, per server): when the server lists
+     * "localuser=subject" pairs, a local account is only reachable by the
+     * provider subject bound to it, and unlisted accounts are refused. The
+     * username and email claims can usually be changed at the provider; `sub`
+     * cannot. Returns a reason string on refusal, else null.
+     */
+    protected function subjectRefusal(OIDC $auth, string $username, string $subject): ?string
+    {
+        $bindings = $auth->getSubjectBindings();
+        if (count($bindings) === 0) {
+            return null;
+        }
+        if (!isset($bindings[$username])) {
+            return 'account has no subject binding';
+        }
+        if ($subject === '' || !hash_equals($bindings[$username], $subject)) {
+            return 'subject not bound to this account';
+        }
+        return null;
+    }
+
     protected function getAuthProvider($provider): OIDC|null
     {
         if (!is_string($provider) || $provider === '') {
@@ -385,10 +453,10 @@ class AuthController extends ApiControllerBase
         return $auth;
     }
 
-    protected function authenticate($auth)
+    protected function authenticate($auth, string $host)
     {
         /** @var OIDC $auth */
-        $client = new OidcClient($auth, $this);
+        $client = new OidcClient($auth, $this, $host);
         $client->addScope($auth->oidcScopes);
         if ($auth->oidcForceLogin) {
             // Ask the provider to re-authenticate the user instead of reusing
