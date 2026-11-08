@@ -14,8 +14,8 @@ use OPNsense\Oidc\OidcClient;
 use RuntimeException;
 
 /**
- * Class ServiceController
- * @package OPNsense\Cron
+ * Class AuthController
+ * @package OPNsense\Oidc
  */
 class AuthController extends ApiControllerBase
 {
@@ -27,76 +27,190 @@ class AuthController extends ApiControllerBase
         return true;
     }
 
-    public function iconAction()
+    /**
+     * Plain-text response. Never echo request- or IdP-supplied data back to
+     * the browser. Exception details go to the "oidc" logger (LOG_LOCAL4),
+     * NOT the audit/LOG_AUTH facility: every LOG_AUTH line is parsed by
+     * OPNsense's lockout_handler, so request-controlled text there could add
+     * or reset sshlockout entries.
+     */
+    private function fail(int $status, string $publicMessage, ?\Throwable $e = null)
     {
-        $provider = $this->request->get('provider');
-        if (empty($provider)) {
-            $this->response->setStatusCode(400, "Bad Request");
-            return "Missing authentication provider.";
+        if ($e !== null) {
+            $this->getLogger('oidc')->warning(sprintf(
+                'OIDC login error (%s) from %s',
+                self::clean($e->getMessage(), 512),
+                $this->clientAddress()
+            ));
         }
-
-        $auth = (new AuthenticationFactory())->get($provider);
-        if ($auth == null || $auth->getType() !== 'oidc') {
-            $this->response->setStatusCode(404, "Not Found");
-            return "Authentication provider not found.";
-        }
-
-        $url = $auth->oidcIconUrl;
-        if (empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
-            $this->response->setStatusCode(404, "Not Found");
-            return "Invalid icon URL.";
-        }
-        // Proxy the image using cURL
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        $imageData = curl_exec($ch);
-        $curlErr = curl_error($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($imageData === false || $httpCode !== 200) {
-            $this->response->setStatusCode(404, "Not Found");
-            return "Unable to fetch icon. " . ($curlErr ?: "HTTP $httpCode");
-        }
-
-        $mimeType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-        $this->response->setHeader('Content-Type', $mimeType);
-        $this->response->setHeader('Cache-Control', 'public, max-age=31536000, immutable'); // cache for 1 year, aggressive
-        return $imageData;
+        $this->response->setStatusCode($status);
+        $this->response->setHeader('Content-Type', 'text/plain; charset=UTF-8');
+        $this->response->setHeader('X-Content-Type-Options', 'nosniff');
+        $this->response->setHeader('Cache-Control', 'no-store');
+        return $publicMessage;
     }
 
     /**
-     * reconfigure HelloWorld
+     * True while core would still honour this session (same idle timeout as
+     * authgui.inc / ControllerRoot::doAuth()). An idle-expired session is
+     * dropped here the way ControllerRoot::doAuth() drops it, so a stale tab
+     * can use the login button instead of getting "Already logged in".
      */
-    public function loginAction()
+    private function isLoggedIn(): bool
     {
-        if ($this->session->get('Username') != null) {
-            $this->response->setStatusCode(400, "Bad Request");
-            return "Already logged in.";
+        if ($this->session->get('Username') == null) {
+            return false;
+        }
+        $cnf = Config::getInstance()->object();
+        $timeout = !empty($cnf->system->webgui->session_timeout)
+            ? (int)$cnf->system->webgui->session_timeout * 60 : 14400;
+        $last = $this->session->get('last_access');
+        if (!is_numeric($last) || (int)$last >= time() - $timeout) {
+            return true;
+        }
+        foreach (['Username', 'last_access', 'user_shouldChangePassword'] as $key) {
+            $this->session->remove($key);
+        }
+        return false;
+    }
+
+    /**
+     * Audit line on the same facility core authentication uses. Callers must
+     * pass untrusted values through clean() and end the message with
+     * "from <client ip>" so lockout_handler (which takes the last IP-looking
+     * token) attributes it to the real client.
+     */
+    private function audit(int $priority, string $message)
+    {
+        openlog("audit", LOG_ODELAY, LOG_AUTH);
+        syslog($priority, $message);
+        closelog();
+    }
+
+    /** Printable-ASCII, length-capped rendering of an untrusted value for logs. */
+    private static function clean($value, int $max = 128): string
+    {
+        $s = is_scalar($value) ? (string)$value : gettype($value);
+        return substr(preg_replace('/[^\x20-\x7E]/', '?', $s), 0, $max);
+    }
+
+    private function clientAddress(): string
+    {
+        return self::clean($this->request->getClientAddress() ?? '-', 64);
+    }
+
+    /** True if the provider is selected as a WebGui authentication server. */
+    private function isEnabledForWebGui(string $provider): bool
+    {
+        $cnf = Config::getInstance()->object();
+        $authmode = (string)($cnf->system->webgui->authmode ?? '');
+        return in_array($provider, array_map('trim', explode(',', $authmode)), true);
+    }
+
+    /**
+     * Proxies the admin-configured provider icon for the (unauthenticated)
+     * login page. Hardened: only providers enabled for the web GUI, https only,
+     * no redirects, short timeouts, size cap, raster images only, and a
+     * sandboxing CSP so nothing fetched can execute on the GUI origin.
+     */
+    public function iconAction()
+    {
+        $provider = $this->request->get('provider');
+        if (!is_string($provider) || $provider === '') {
+            return $this->fail(400, "Missing authentication provider.");
+        }
+        $auth = $this->getAuthProvider($provider);
+        if ($auth === null || !$this->isEnabledForWebGui($provider)) {
+            return $this->fail(404, "Authentication provider not found.");
+        }
+        $url = (string)$auth->oidcIconUrl;
+        if ($url === '' || !filter_var($url, FILTER_VALIDATE_URL) || stripos($url, 'https://') !== 0) {
+            return $this->fail(404, "Invalid icon URL.");
         }
 
-        // Set the provider in the session
+        $max = 262144;
+        $body = '';
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_PROTOCOLS_STR => 'https',
+            CURLOPT_REDIR_PROTOCOLS_STR => 'https',
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_TIMEOUT => 5,
+            CURLOPT_MAXFILESIZE => $max,
+            CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$body, $max) {
+                $body .= $data;
+                return strlen($body) > $max ? -1 : strlen($data);
+            },
+        ]);
+        $ok = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $mimeType = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+
+        if ($ok === false || $httpCode !== 200 || $body === '') {
+            return $this->fail(404, "Unable to fetch icon.");
+        }
+
+        // Raster images only; anything else (HTML, SVG with script, ...) would
+        // be served from the firewall's own origin.
+        $allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon'];
+        $baseType = strtolower(trim(explode(';', $mimeType)[0]));
+        if (!in_array($baseType, $allowed, true)) {
+            return $this->fail(415, "Unsupported icon type.");
+        }
+
+        $this->response->setHeader('Content-Type', $baseType);
+        $this->response->setHeader('X-Content-Type-Options', 'nosniff');
+        $this->response->setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+        $this->response->setHeader('Cache-Control', 'public, max-age=86400');
+        return $body;
+    }
+
+    public function loginAction()
+    {
+        if ($this->isLoggedIn()) {
+            return $this->fail(400, "Already logged in.");
+        }
+
+        // The login endpoint only starts a flow; callback parameters belong to
+        // /api/oidc/auth/callback and are never processed here.
+        foreach (['code', 'state', 'error', 'id_token', 'access_token'] as $param) {
+            if ($this->request->hasQuery($param) || $this->request->hasPost($param)) {
+                return $this->fail(400, "Unexpected parameters.");
+            }
+        }
+
         $provider = $this->request->get('provider');
-        if (empty($provider)) {
-            $this->response->setStatusCode(400, "Bad Request");
-            return "Missing authentication provider.";
+        if (!is_string($provider) || $provider === '') {
+            return $this->fail(400, "Missing authentication provider.");
+        }
+
+        $auth = $this->getAuthProvider($provider);
+        if ($auth === null) {
+            return $this->fail(404, "Authentication provider not found.");
+        }
+        if (!$this->isEnabledForWebGui($provider)) {
+            $this->audit(LOG_WARNING, sprintf(
+                "OIDC login refused for provider %s (not enabled for WebGui) from %s",
+                self::clean($provider),
+                $this->clientAddress()
+            ));
+            return $this->fail(403, "This authentication provider is not enabled for the web GUI.");
         }
         $this->session->set(self::SESSION_AUTH_PROVIDER, $provider);
 
-        // Authenticate
         try {
-            $auth = $this->getAuthProvider($provider);
             $user = $this->authenticate($auth);
-        } catch (\Exception $e) {
-            $this->response->setStatusCode(500, "Server Error");
-            return "Unable to authenticate: " . $e->getMessage();
+        } catch (\Throwable $e) {
+            return $this->fail(500, "Unable to authenticate. See the system log for details.", $e);
         }
 
         $this->session->close();
-        if ($user === false)
+        if ($user === false) {
             return 'Redirecting...';
+        }
 
         return "Already logged in but session not setup. Please try again";
     }
@@ -104,70 +218,168 @@ class AuthController extends ApiControllerBase
 
     public function callbackAction()
     {
-        if ($this->session->get('Username') != null) {
-            $this->response->setStatusCode(400, "Bad Request");
-            return "Already logged in.";
+        if ($this->isLoggedIn()) {
+            return $this->fail(400, "Already logged in.");
         }
 
         // Get the provider from the session
         $provider = $this->session->get(self::SESSION_AUTH_PROVIDER);
-        if (empty($provider)) {
-            $this->response->setStatusCode(404, "Authentication not found");
-            return "Missing authentication provider. Please try the flow again.";
+        if (!is_string($provider) || $provider === '') {
+            return $this->fail(404, "Missing authentication provider. Please try the flow again.");
         }
         $this->session->remove(self::SESSION_AUTH_PROVIDER);
 
-        // Check the OIDC flow
+        // Provider-reported errors: log only a sanitized error code.
+        if ($this->request->has('error')) {
+            $this->getLogger('oidc')->warning(sprintf(
+                'OIDC provider returned error (%s) from %s',
+                self::clean($this->request->get('error'), 64),
+                $this->clientAddress()
+            ));
+            return $this->fail(400, "The identity provider reported an error. Please try again.");
+        }
+        if (!is_string($this->request->get('code')) || !is_string($this->request->get('state'))) {
+            return $this->fail(400, "Invalid callback. Please try the flow again.");
+        }
+
         $auth = $this->getAuthProvider($provider);
-        if ($auth === null)
-            return "Authentication provider not found. Please try the flow again.";
+        if ($auth === null) {
+            return $this->fail(404, "Authentication provider not found. Please try the flow again.");
+        }
+        if (!$this->isEnabledForWebGui($provider)) {
+            return $this->fail(403, "This authentication provider is not enabled for the web GUI.");
+        }
 
         try {
             $user = $this->authenticate($auth);
             if ($user === false) {
-                $this->response->setStatusCode(400, "Authentication not found");
-                return "Something went wrong while trying to login you in";
+                return $this->fail(400, "Something went wrong while trying to log you in.");
             }
-        } catch (\Exception $e) {
-            $this->response->setStatusCode(500, "Server Error");
-            return "Unable to authenticate: " . $e->getMessage();
+        } catch (\Throwable $e) {
+            return $this->fail(500, "Unable to authenticate. See the system log for details.", $e);
         }
 
         // Lookup existing local user
         $lookupUsername = $user->{$auth->oidcUsernameClaim} ?? null;
-        $lookupEmail    = $user->email ?? null;
+        if ($lookupUsername !== null && !is_string($lookupUsername)) {
+            $lookupUsername = null;
+        }
+        $claimEmail  = (isset($user->email) && is_string($user->email)) ? $user->email : null;
+        $lookupEmail = $auth->oidcMatchEmail ? $claimEmail : null;
         $localUser = $this->findLocalUser($lookupUsername, $lookupEmail);
         if ($localUser === false) {
             if (!self::ALLOW_USER_CREATION || !$auth->oidcCreateUsers) {
-                $this->response->setStatusCode(403, "User not found");
-                return "No matching local account, and user creation disabled.";
+                $this->audit(LOG_WARNING, sprintf(
+                    "user %s could not authenticate for WebGui [using OIDC provider %s] (no matching local account) from %s",
+                    self::clean($lookupUsername),
+                    self::clean($provider),
+                    $this->clientAddress()
+                ));
+                return $this->fail(403, "No matching local account, and user creation disabled.");
             }
 
             // Create the user if allowed
-            $localUser = $this->createLocalUser($lookupUsername, $lookupEmail, $user->name ?? '',  $auth->oidcDefaultGroups);
+            $localUser = $this->createLocalUser($lookupUsername, $claimEmail, $user->name ?? '',  $auth->oidcDefaultGroups);
             if ($localUser === false) {
-                $this->response->setStatusCode(500, "User creation failed");
-                return "Unable to create local account.";
+                return $this->fail(500, "Unable to create local account.");
             }
         }
 
-        // Create the main login session and log the user in.
+        // Same account checks core applies to password logins; mirrors
+        // OPNsense\Auth\Local::_authenticate() (Local.php ~l.156-162 in 26.7).
+        // Core exposes no public "may this account log in" check to call.
         $username = (string)$localUser->name;
+        $refusal = $this->accountRefusal($localUser);
+        if ($refusal !== null) {
+            $this->audit(LOG_WARNING, sprintf(
+                "user %s could not authenticate for WebGui [using OIDC provider %s] (%s) from %s",
+                self::clean($username),
+                self::clean($provider),
+                $refusal,
+                $this->clientAddress()
+            ));
+            return $this->fail(403, "This account cannot sign in with OpenID Connect.");
+        }
+        // Parity with authgui.inc:181 — OIDC extends Local, so the local
+        // password-policy duration/compliance rules apply to the mapped account.
+        $shouldChangePassword = $auth->shouldChangePassword($username);
+
+        // New session identifier on privilege change, as core does in
+        // authgui.inc. OPNsense's Mvc\Session starts and aborts the PHP
+        // session before dispatch, so it must be reopened to regenerate.
+        // Fail closed if regeneration is not possible.
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (session_status() !== PHP_SESSION_ACTIVE || !session_regenerate_id(true)) {
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                session_abort();
+            }
+            return $this->fail(500, "Unable to establish a new session.");
+        }
+        session_write_close();
+        // Don't carry pre-login CSRF tokens into the authenticated session.
+        $this->session->remove('$PHALCON/CSRF$');
+        $this->session->remove('$PHALCON/CSRF/KEY$');
+
         $cnf = Config::getInstance()->object();
         $this->session->set('Username', strval($username));
         $this->session->set('last_access', time());
         $this->session->set('protocol', strval($cnf->system->webgui->protocol));
-        $this->session->set('oidc_user', $user);
+        if ($shouldChangePassword) {
+            $this->session->set('user_shouldChangePassword', '1');
+        }
+        // Keep only the subject identifiers, as an array (Session::get() is typed string|array|null).
+        $this->session->set('oidc_user', ['sub' => (string)($user->sub ?? ''), 'provider' => $provider]);
         $this->session->close();
+
+        $this->audit(LOG_NOTICE, sprintf(
+            "user %s authenticated successfully for WebGui [using OIDC provider %s] from %s",
+            self::clean($username),
+            self::clean($provider),
+            $this->clientAddress()
+        ));
+        if (empty($cnf->system->webgui->quietlogin)) {
+            // The exact line core emits (authgui.inc); lockout_handler resets
+            // the client's failure counter on it and log alerting keys on it.
+            $this->audit(LOG_NOTICE, sprintf(
+                "Successful login for user '%s' from: %s",
+                self::clean($username),
+                $this->clientAddress()
+            ));
+        }
+
+        $this->response->setHeader('Cache-Control', 'no-store');
         $this->response->redirect('/');
         return 'Redirecting home...';
     }
 
+    /** Returns a reason string if the local account may not log in, else null. */
+    protected function accountRefusal($localUser): ?string
+    {
+        if (!empty((string)$localUser->disabled)) {
+            return 'account disabled';
+        }
+        if (!empty((string)$localUser->expires)
+            && strtotime("-1 day") > strtotime(date("m/d/Y", strtotime((string)$localUser->expires)))
+        ) {
+            return 'account expired';
+        }
+        // The built-in system account (root) is never reachable through an
+        // external identity provider.
+        if ((string)$localUser->scope === 'system' || (string)$localUser->uid === '0' || (string)$localUser->name === 'root') {
+            return 'system account';
+        }
+        return null;
+    }
+
     protected function getAuthProvider($provider): OIDC|null
     {
+        if (!is_string($provider) || $provider === '') {
+            return null;
+        }
         $auth = (new AuthenticationFactory())->get($provider);
         if ($auth == null || $auth->getType() !== 'oidc') {
-            $this->response->setStatusCode(404, "Authentication not found");
             return null;
         }
         return $auth;
@@ -178,11 +390,22 @@ class AuthController extends ApiControllerBase
         /** @var OIDC $auth */
         $client = new OidcClient($auth, $this);
         $client->addScope($auth->oidcScopes);
+        if ($auth->oidcForceLogin) {
+            // Ask the provider to re-authenticate the user instead of reusing
+            // an existing provider session.
+            $client->addAuthParam(['prompt' => 'login']);
+        }
 
         if (!$client->authenticate())
             return false;
 
         $user = $client->requestUserInfo();
+
+        // OIDC Core 5.3.2: the UserInfo `sub` MUST match the ID Token `sub`.
+        $idSub = $client->getVerifiedClaims('sub');
+        if (!is_object($user) || !isset($user->sub) || $idSub === null || (string)$user->sub !== (string)$idSub) {
+            throw new RuntimeException('UserInfo subject does not match the ID token subject.');
+        }
         return $user;
     }
 
@@ -194,11 +417,25 @@ class AuthController extends ApiControllerBase
             return false;
         }
 
-        foreach ($cnf->system->user as $user) {
-            if (($username && (string)$user->name === $username) ||
-                ($email && isset($user->email) && (string)$user->email === $email)
-            ) {
-                return $user;
+        // Username match takes precedence over email match.
+        if (is_string($username) && $username !== '') {
+            foreach ($cnf->system->user as $user) {
+                if ((string)$user->name === $username) {
+                    return $user;
+                }
+            }
+        }
+
+        // Email match (opt-in): only when exactly one local account carries it.
+        if (is_string($email) && $email !== '') {
+            $matches = [];
+            foreach ($cnf->system->user as $user) {
+                if (!empty((string)$user->email) && (string)$user->email === $email) {
+                    $matches[] = $user;
+                }
+            }
+            if (count($matches) === 1) {
+                return $matches[0];
             }
         }
 
@@ -254,8 +491,8 @@ class AuthController extends ApiControllerBase
                 } else {
                     syslog(LOG_NOTICE, sprintf(
                         'User: policy change for %s link group %s',
-                        $username,
-                        (string)$group->name
+                        self::clean($username),
+                        self::clean((string)$group->name)
                     ));
                     $group->member = implode(',', array_merge($members, [(string)$user->uid]));
                 }
