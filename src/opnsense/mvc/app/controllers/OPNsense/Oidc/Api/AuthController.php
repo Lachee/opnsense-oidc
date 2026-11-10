@@ -75,10 +75,12 @@ class AuthController extends ApiControllerBase
     }
 
     /**
-     * Audit line on the same facility core authentication uses. Callers must
-     * pass untrusted values through clean() and end the message with
-     * "from <client ip>" so lockout_handler (which takes the last IP-looking
-     * token) attributes it to the real client.
+     * Audit line on the same facility core authentication uses. lockout_handler
+     * reads every LOG_AUTH line: it counts or resets on phrases found anywhere
+     * in it ("Accepted", "Successful login", "Invalid user", ...) and takes the
+     * last IP-looking token as the client. So these lines carry only values an
+     * administrator defined (provider name, local account name), never
+     * provider-supplied text, and end with "from <client ip>".
      */
     private function audit(int $priority, string $message)
     {
@@ -137,7 +139,7 @@ class AuthController extends ApiControllerBase
      */
     public function iconAction()
     {
-        $provider = $this->request->get('provider');
+        $provider = $this->request->getQuery('provider');
         if (!is_string($provider) || $provider === '') {
             return $this->fail(400, "Missing authentication provider.");
         }
@@ -203,8 +205,10 @@ class AuthController extends ApiControllerBase
                 return $this->fail(400, "Unexpected parameters.");
             }
         }
+        // (Cookies with these names are ignored: OidcClient::authenticate()
+        // only lets the query string reach the library.)
 
-        $provider = $this->request->get('provider');
+        $provider = $this->request->getQuery('provider');
         if (!is_string($provider) || $provider === '') {
             return $this->fail(400, "Missing authentication provider.");
         }
@@ -262,15 +266,17 @@ class AuthController extends ApiControllerBase
         $this->session->remove(self::SESSION_AUTH_PROVIDER);
 
         // Provider-reported errors: log only a sanitized error code.
-        if ($this->request->has('error')) {
+        // Query string only: Request::has()/get() read $_REQUEST, which on
+        // OPNsense also holds cookies (and they win over the query string).
+        if ($this->request->hasQuery('error')) {
             $this->getLogger('oidc')->warning(sprintf(
                 'OIDC provider returned error (%s) from %s',
-                self::clean($this->request->get('error'), 64),
+                self::clean($this->request->getQuery('error'), 64),
                 $this->clientAddress()
             ));
             return $this->fail(400, "The identity provider reported an error. Please try again.");
         }
-        if (!is_string($this->request->get('code')) || !is_string($this->request->get('state'))) {
+        if (!is_string($this->request->getQuery('code')) || !is_string($this->request->getQuery('state'))) {
             return $this->fail(400, "Invalid callback. Please try the flow again.");
         }
 
@@ -297,11 +303,6 @@ class AuthController extends ApiControllerBase
             return $this->fail(500, "Unable to authenticate. See the system log for details.", $e);
         }
 
-        // Lookup existing local user
-        $lookupUsername = $user->{$auth->oidcUsernameClaim} ?? null;
-        if ($lookupUsername !== null && !is_string($lookupUsername)) {
-            $lookupUsername = null;
-        }
         // By default only an address the provider says it verified is used,
         // for matching and for new accounts; an unverified one could be
         // anybody's. "Allow unverified email" turns this off per server.
@@ -309,16 +310,55 @@ class AuthController extends ApiControllerBase
             && ($user->email_verified === true || $user->email_verified === 'true'));
         $claimEmail  = ($emailVerified && isset($user->email) && is_string($user->email)) ? $user->email : null;
         $lookupEmail = $auth->oidcMatchEmail ? $claimEmail : null;
+
+        // Lookup existing local user
+        $lookupUsername = $user->{$auth->oidcUsernameClaim} ?? null;
+        if ($lookupUsername !== null && !is_string($lookupUsername)) {
+            $lookupUsername = null;
+        }
+        $subject = (string)($user->sub ?? '');
+        // The claimed username and the subject come from the provider. They
+        // go to the "oidc" log only: lockout_handler acts on words found
+        // anywhere in a LOG_AUTH line, so provider-chosen text must not be
+        // part of one.
+        $this->getLogger('oidc')->notice(sprintf(
+            'OIDC login attempt [provider %s, username claim "%s", subject "%s"] from %s',
+            self::clean($provider),
+            self::clean($lookupUsername),
+            self::clean($subject),
+            $this->clientAddress()
+        ));
+        // When the username claim is the email claim, the same verification
+        // rule applies to it.
+        if ($lookupUsername !== null && (string)$auth->oidcUsernameClaim === 'email' && !$emailVerified) {
+            $this->audit(LOG_WARNING, sprintf(
+                "OIDC login could not authenticate for WebGui [using OIDC provider %s] (email not verified) from %s",
+                self::clean($provider),
+                $this->clientAddress()
+            ));
+            return $this->fail(403, "The identity provider has not verified this email address.");
+        }
+
         $localUser = $this->findLocalUser($lookupUsername, $lookupEmail);
         if ($localUser === false) {
-            if (!self::ALLOW_USER_CREATION || !$auth->oidcCreateUsers) {
+            // Subject binding is checked before an account is created, so a
+            // login that will be refused leaves nothing behind.
+            $refusal = null;
+            if (!self::ALLOW_USER_CREATION || !$auth->oidcCreateUsers || $lookupUsername === null || $lookupUsername === '') {
+                $refusal = 'no matching local account';
+            } else {
+                $refusal = $this->subjectRefusal($auth, $lookupUsername, $subject);
+            }
+            if ($refusal !== null) {
                 $this->audit(LOG_WARNING, sprintf(
-                    "user %s could not authenticate for WebGui [using OIDC provider %s] (no matching local account) from %s",
-                    self::clean($lookupUsername),
+                    "OIDC login could not authenticate for WebGui [using OIDC provider %s] (%s) from %s",
                     self::clean($provider),
+                    $refusal,
                     $this->clientAddress()
                 ));
-                return $this->fail(403, "No matching local account, and user creation disabled.");
+                return $this->fail(403, $refusal === 'no matching local account'
+                    ? "No matching local account, and user creation disabled."
+                    : "This account cannot sign in with OpenID Connect.");
             }
 
             // Create the user if allowed
@@ -331,15 +371,15 @@ class AuthController extends ApiControllerBase
         // Same account checks core applies to password logins; mirrors
         // OPNsense\Auth\Local::_authenticate() (Local.php ~l.156-162 in 26.7).
         // Core exposes no public "may this account log in" check to call.
+        // $username is the local account's name (set by an administrator or
+        // validated by core's User model), so it may appear in audit lines.
         $username = (string)$localUser->name;
-        $subject = (string)($user->sub ?? '');
         $refusal = $this->accountRefusal($localUser) ?? $this->subjectRefusal($auth, $username, $subject);
         if ($refusal !== null) {
             $this->audit(LOG_WARNING, sprintf(
-                "user %s could not authenticate for WebGui [using OIDC provider %s, subject %s] (%s) from %s",
+                "user %s could not authenticate for WebGui [using OIDC provider %s] (%s) from %s",
                 self::clean($username),
                 self::clean($provider),
-                self::clean($subject),
                 $refusal,
                 $this->clientAddress()
             ));
@@ -379,10 +419,9 @@ class AuthController extends ApiControllerBase
         $this->session->close();
 
         $this->audit(LOG_NOTICE, sprintf(
-            "user %s authenticated successfully for WebGui [using OIDC provider %s, subject %s] from %s",
+            "user %s authenticated successfully for WebGui [using OIDC provider %s] from %s",
             self::clean($username),
             self::clean($provider),
-            self::clean($subject),
             $this->clientAddress()
         ));
         if (empty($cnf->system->webgui->quietlogin)) {

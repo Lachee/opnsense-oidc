@@ -30,10 +30,11 @@ class TC extends OidcClient {
 }
 
 function tok(array $claims, $key, string $alg='RS256', ?string $kid='k1') { return JWT::encode($claims, $key, $alg, $kid); }
-function run(string $name, callable $mkToken, bool $expectOk, ?array $req=null, ?string $jwks=null) {
+function run(string $name, callable $mkToken, bool $expectOk, ?array $req=null, ?string $jwks=null, array $cookies=[]) {
   global $ISS,$JWKS,$JWKS0; $JWKS=$jwks??$JWKS0; $c=new TC(new \OPNsense\Auth\OIDC, new \OPNsense\Mvc\Controller, 'fw.test');
   $c->seed('state-abc','nonce-xyz'); $c->idToken=$mkToken();
-  $_REQUEST = $req ?? ['code'=>'code-1','state'=>'state-abc'];
+  // As on OPNsense (variables_order GPCS, no request_order): cookies are in $_REQUEST and win.
+  $_GET = $req ?? ['code'=>'code-1','state'=>'state-abc']; $_REQUEST = array_merge($_GET, $cookies);
   try { $ok=$c->authenticate(); $res=$ok?'ACCEPT':'false'; } catch (\Throwable $e) { $ok=false; $res='REJECT: '.substr($e->getMessage(),0,70); }
   $pass = ($ok===$expectOk);
   printf("%-4s %-38s %-50s tokenCalls=%d leftovers=%s\n", $pass?'PASS':'FAIL', $name, $res, $c->tokenCalls, json_encode($c->leftovers()));
@@ -61,6 +62,9 @@ $r[]=run('multi-aud without azp', fn()=>tok($w(['aud'=>['client-1','x']]),$priv)
 $r[]=run('bad state (code not redeemed)', fn()=>tok($base,$priv), false, ['code'=>'code-1','state'=>'wrong']);
 $r[]=run('array code param', fn()=>tok($base,$priv), false, ['code'=>['x'],'state'=>'state-abc']);
 $r[]=run('oversized token', fn()=>str_repeat('a',20000).'.b.c', false);
+// Cookies must not supply or override callback parameters.
+$r[]=run('cookie "state" ignored', fn()=>tok($base,$priv), true, null, null, ['state'=>'planted']);
+$r[]=run('cookie "error" ignored', fn()=>tok($base,$priv), true, null, null, ['error'=>'planted']);
 // JWKS hygiene: unsupported / encryption keys are skipped, not fatal, and never verify.
 $sig = json_decode($JWKS0,true)['keys'][0];
 $okp = ['kty'=>'OKP','crv'=>'X25519','kid'=>'x1','x'=>$b64(random_bytes(32))];

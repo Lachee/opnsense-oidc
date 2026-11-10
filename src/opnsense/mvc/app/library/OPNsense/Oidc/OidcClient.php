@@ -80,6 +80,18 @@ class OidcClient extends OpenIDConnectClient
      */
     public function authenticate(): bool
     {
+        // The library reads its callback parameters from $_REQUEST. OPNsense's
+        // php.ini sets variables_order "GPCS" and no request_order, so
+        // $_REQUEST also holds cookies and they override the query string.
+        // Only the query string may supply these parameters.
+        foreach (['code', 'state', 'error', 'error_description', 'id_token', 'access_token'] as $param) {
+            if (isset($_GET[$param])) {
+                $_REQUEST[$param] = $_GET[$param];
+            } else {
+                unset($_REQUEST[$param]);
+            }
+        }
+
         $isCallback = isset($_REQUEST['code']);
         if ($isCallback) {
             $code = $_REQUEST['code'];

@@ -162,7 +162,7 @@ class OIDC extends Local implements IAuthConnector
             ],
             'oidc_username_claim' => [
                 'name' => gettext('Username claim'),
-                'help' => gettext('The claim to use as local username. The claim must be provided by the OpenID Connect provider. Usually this is <code>preferred_username</code> or <code>email</code>.'),
+                'help' => gettext('The claim to use as local username. The claim must be provided by the OpenID Connect provider. Usually this is <code>preferred_username</code> or <code>email</code>. With <code>email</code>, the address must be marked <code>email_verified</code> unless "Allow unverified email" is ticked.'),
                 'type' => 'text',
                 'validate' => fn($value) => !empty($value) ? [] : [gettext('Username claim must not be empty.')]
             ],
@@ -192,7 +192,7 @@ class OIDC extends Local implements IAuthConnector
             ],
             'oidc_allow_unverified_email' => [
                 'name' => gettext('Allow unverified email'),
-                'help' => gettext('By default the email claim is only used (for "Match by email" and for new accounts) when the provider marks it <code>email_verified</code>. Tick this only for a provider that never sends <code>email_verified</code> and does not let users set their own address.'),
+                'help' => gettext('By default the email claim is only used (for "Match by email", for new accounts, and as the username when the username claim is <code>email</code>) when the provider marks it <code>email_verified</code>. Tick this only for a provider that never sends <code>email_verified</code> and does not let users set their own address.'),
                 'type' => 'checkbox',
                 'validate' => fn($value) => [],
             ],
@@ -204,7 +204,7 @@ class OIDC extends Local implements IAuthConnector
             ],
             'oidc_subject_binding' => [
                 'name' => gettext('Subject binding'),
-                'help' => gettext('Optional. Comma-separated <code>localuser=subject</code> pairs. When set, each local account can only be signed into by the provider subject (<code>sub</code> claim) bound to it, and accounts not listed are refused. The subject is logged on every OIDC login attempt.'),
+                'help' => gettext('Optional. Comma-separated <code>localuser=subject</code> pairs. When set, each local account can only be signed into by the provider subject (<code>sub</code> claim) bound to it, and accounts not listed are refused. The subject is written to the system log (<code>oidc</code>) on every OIDC login attempt. With "Automatic user creation", only bound names are created.'),
                 'type' => 'text',
                 'validate' => fn($value) => empty($value) || preg_match('/^\s*[^=\s,]+=[^=\s,]+(\s*[,\s]\s*[^=\s,]+=[^=\s,]+)*\s*$/', (string)$value)
                     ? [] : [gettext('Use comma-separated localuser=subject pairs.')],
