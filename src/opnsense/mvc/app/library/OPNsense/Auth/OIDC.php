@@ -40,6 +40,10 @@ class OIDC extends Local implements IAuthConnector
     public $oidcClientId = null;
     public $oidcClientSecret = null;
     public $oidcCreateUsers = false;
+    public $oidcMatchEmail = false;
+    /** Off by default: unset/unticked means email_verified is required. */
+    public $oidcAllowUnverifiedEmail = false;
+    public $oidcForceLogin = false;
     public $oidcUsernameClaim = 'preferred_username';
     public $oidcDefaultGroups = [];
     public $oidcScopes = [
@@ -54,6 +58,8 @@ class OIDC extends Local implements IAuthConnector
 
     public $oidcCustomButton = null;
     public $oidcIconUrl = null;
+    /** @var string comma-separated "localuser=subject" pairs; see getSubjectBindings() */
+    public $oidcSubjectBinding = '';
 
 
     /**
@@ -91,6 +97,10 @@ class OIDC extends Local implements IAuthConnector
             'oidc_icon_url' => 'oidcIconUrl',
             'oidc_create_users' => 'oidcCreateUsers',
             'oidc_username_claim' => 'oidcUsernameClaim',
+            'oidc_match_email' => 'oidcMatchEmail',
+            'oidc_allow_unverified_email' => 'oidcAllowUnverifiedEmail',
+            'oidc_force_login' => 'oidcForceLogin',
+            'oidc_subject_binding' => 'oidcSubjectBinding',
         ];
 
         // >> map properties 1-on-1
@@ -100,8 +110,26 @@ class OIDC extends Local implements IAuthConnector
             }
         }
 
-        $this->oidcDefaultGroups = explode(',', $config['oidc_default_groups']);
-        $this->oidcScopes = explode(',', $config['oidc_scopes']);
+        $this->oidcDefaultGroups = array_filter(explode(',', $config['oidc_default_groups'] ?? ''));
+        if (!empty($config['oidc_scopes'])) {
+            $this->oidcScopes = explode(',', $config['oidc_scopes']);
+        }
+    }
+
+    /**
+     * Parses the subject binding setting into [localuser => subject].
+     * @return array<string,string>
+     */
+    public function getSubjectBindings(): array
+    {
+        $bindings = [];
+        foreach (preg_split('/[\s,]+/', (string)$this->oidcSubjectBinding, -1, PREG_SPLIT_NO_EMPTY) as $pair) {
+            $parts = explode('=', $pair, 2);
+            if (count($parts) === 2 && $parts[0] !== '' && $parts[1] !== '') {
+                $bindings[$parts[0]] = $parts[1];
+            }
+        }
+        return $bindings;
     }
 
     /**
@@ -118,7 +146,8 @@ class OIDC extends Local implements IAuthConnector
                 'name' => gettext('Provider URL'),
                 'help' => gettext('URL to the OpenID Connect provider. Either the root or the <code>/.well-known/openid-configuration</code> path.') . ' ' . $callbackURL,
                 'type' => 'text',
-                'validate' => fn($value) => filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Discovery needs a valid URL.')],
+                'validate' => fn($value) => (filter_var($value, FILTER_VALIDATE_URL) && stripos((string)$value, 'https://') === 0)
+                    ? [] : [gettext('Discovery needs a valid https:// URL.')],
 
             ],
             'oidc_client_id' => [
@@ -133,7 +162,7 @@ class OIDC extends Local implements IAuthConnector
             ],
             'oidc_username_claim' => [
                 'name' => gettext('Username claim'),
-                'help' => gettext('The claim to use as local username. The claim must be provided by the OpenID Connect provider. Usually this is <code>preferred_username</code> or <code>email</code>.'),
+                'help' => gettext('The claim to use as local username. The claim must be provided by the OpenID Connect provider. Usually this is <code>preferred_username</code> or <code>email</code>. With <code>email</code>, the address must be marked <code>email_verified</code> unless "Allow unverified email" is ticked.'),
                 'type' => 'text',
                 'validate' => fn($value) => !empty($value) ? [] : [gettext('Username claim must not be empty.')]
             ],
@@ -155,6 +184,31 @@ class OIDC extends Local implements IAuthConnector
                 'type' => 'checkbox',
                 'validate' => fn($value) => [],
             ],
+            'oidc_match_email' => [
+                'name' => gettext('Match by email'),
+                'help' => gettext('Also match local accounts by the email claim when the username claim does not match. Only addresses the provider marks <code>email_verified</code> are used unless "Allow unverified email" is ticked. Only enable this if users cannot change their email address at the provider.'),
+                'type' => 'checkbox',
+                'validate' => fn($value) => [],
+            ],
+            'oidc_allow_unverified_email' => [
+                'name' => gettext('Allow unverified email'),
+                'help' => gettext('By default the email claim is only used (for "Match by email", for new accounts, and as the username when the username claim is <code>email</code>) when the provider marks it <code>email_verified</code>. Tick this only for a provider that never sends <code>email_verified</code> and does not let users set their own address.'),
+                'type' => 'checkbox',
+                'validate' => fn($value) => [],
+            ],
+            'oidc_force_login' => [
+                'name' => gettext('Require fresh login'),
+                'help' => gettext('Send prompt=login so the provider re-authenticates the user on every firewall login instead of reusing an existing provider session.'),
+                'type' => 'checkbox',
+                'validate' => fn($value) => [],
+            ],
+            'oidc_subject_binding' => [
+                'name' => gettext('Subject binding'),
+                'help' => gettext('Optional. Comma-separated <code>localuser=subject</code> pairs. When set, each local account can only be signed into by the provider subject (<code>sub</code> claim) bound to it, and accounts not listed are refused. The subject is written to the system log (<code>oidc</code>) on every OIDC login attempt. With "Automatic user creation", only bound names are created.'),
+                'type' => 'text',
+                'validate' => fn($value) => empty($value) || preg_match('/^\s*[^=\s,]+=[^=\s,]+(\s*[,\s]\s*[^=\s,]+=[^=\s,]+)*\s*$/', (string)$value)
+                    ? [] : [gettext('Use comma-separated localuser=subject pairs.')],
+            ],
             'oidc_default_groups' => [
                 'name' => gettext('Default groups'),
                 'help' => gettext("Group(s) to add by default when creating users"),
@@ -165,9 +219,9 @@ class OIDC extends Local implements IAuthConnector
             // Decorative
             'oidc_icon_url' => [
                 'name' => gettext('Icon URL'),
-                'help' => gettext('URL to an icon representing the OIDC provider. This should be a small image (16x16 or 32x32) in either PNG or SVG format. This image will be proxied.'),
+                'help' => gettext('https URL to a small icon representing the OIDC provider (16x16 or 32x32; PNG, JPEG, GIF or WebP, max 256 KB). The image is proxied for the login page.'),
                 'type' => 'text',
-                'validate' => fn($value) => empty($value) || filter_var($value, FILTER_VALIDATE_URL) ? [] : [gettext('Icon URL needs a valid URL.')],
+                'validate' => fn($value) => empty($value) || (filter_var($value, FILTER_VALIDATE_URL) && stripos((string)$value, 'https://') === 0) ? [] : [gettext('Icon URL needs a valid https:// URL.')],
             ],
             'oidc_custom_button' => [
                 'name' => gettext('Custom Button'),
@@ -193,9 +247,14 @@ class OIDC extends Local implements IAuthConnector
         return [];
     }
 
-    public function preauth($username)
+    /**
+     * IAuthConnector contract: preauth() returns the connector so callers can
+     * chain ->authenticate() (CaptivePortal AccessController does). Returning
+     * false would turn a misconfigured zone into a fatal error.
+     */
+    public function preauth($config)
     {
-        return false;
+        return $this;
     }
 
     public function authenticate($username, $password)
@@ -208,7 +267,8 @@ class OIDC extends Local implements IAuthConnector
         $availableGroups = [];
         foreach (config_read_array('system', 'group') as $group)
             $availableGroups[$group['name']] = $group['name'];
-        $availableGroupsJson = json_encode($availableGroups);
+        // Inlined into a <script> element: escape <, >, &, quotes.
+        $availableGroupsJson = json_encode($availableGroups, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 
         // These are a hack to get the UI to behave. 
         return <<<JS
@@ -262,29 +322,34 @@ $(function() {
                     if (data.errorMessage) {
                         BootstrapDialog.show({
                             title: 'OpenID Connect Test - Failed',
-                            message: data.errorMessage || 'Unknown error has occured.',
+                            message: $('<p>').text(String(data.errorMessage || 'Unknown error has occured.')),
                             type: BootstrapDialog.TYPE_DANGER
                         });
                         return;
                     }
 
-                    let claimsHtml = '';
-                    let scopesHtml = '';
-                    if (data.claims && Object.keys(data.claims).length > 0)
-                        claimsHtml = `<h5>Claims</h5><ul><li>\${data.claims.join('</li><li>')}</li></ul>`;
-                    if (data.scopes && Object.keys(data.scopes).length > 0)
-                        scopesHtml = `<h5>Scopes</h5><ul><li>\${data.scopes.join('</li><li>')}</li></ul>`;
-                    
+                    // Provider-supplied values are rendered as text, never HTML.
+                    const box = $('<div>').append($('<p>').text('Successfully connected to the well-known.'));
+                    const list = (title, items) => {
+                        if (!Array.isArray(items) || items.length === 0) return;
+                        box.append($('<h5>').text(title));
+                        const ul = $('<ul>');
+                        items.forEach(i => ul.append($('<li>').text(String(i))));
+                        box.append(ul);
+                    };
+                    list('Claims', data.claims);
+                    list('Scopes', data.scopes);
+                    box.append($('<hr>'), $('<p>').text('This does not test the client secret or id.'));
                     BootstrapDialog.show({
                         title: 'OpenID Connect Test - Success',
-                        message: 'Successfully connected to the well-known.<br>' + claimsHtml + scopesHtml + "<hr>This does not test the client secret or id.",
+                        message: box,
                         type: BootstrapDialog.TYPE_SUCCESS
                     });
                 },
                 error: function(jqXHR) {
                     BootstrapDialog.show({
                         title: 'OpenID Connect Test - Failed',
-                        message: jqXHR.responseJSON?.errorMessage || jqXHR.responseText,
+                        message: $('<p>').text(String(jqXHR.responseJSON?.errorMessage || jqXHR.responseText || 'Request failed.')),
                         type: BootstrapDialog.TYPE_DANGER
                     });
                 }
